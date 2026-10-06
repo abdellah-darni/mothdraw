@@ -118,6 +118,16 @@ export class Builder {
     this.vertexCount++;
   }
 
+  /** Vertices pack() will write, counting mirror images. */
+  outputVertexCount() {
+    let total = 0;
+    for (let l = 0; l < this.lineCount; l++) {
+      const n = this.starts[l + 1] - this.starts[l];
+      total += this.flags[l] & MIRROR ? 2 * n : n;
+    }
+    return total;
+  }
+
   /** Closes the open polyline. A line with fewer than 2 vertices is dropped. */
   end() {
     if (!this.open) return;

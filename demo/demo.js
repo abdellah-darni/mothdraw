@@ -62,7 +62,6 @@ function render() {
   // Canvas cannot use currentColor directly; read the computed colour.
   const style = getComputedStyle(canvas);
   ctx.strokeStyle = ctx.fillStyle = style.color;
-  ctx.lineWidth = dpr;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   const fit = fitDrawing(moth.drawing, w, h);

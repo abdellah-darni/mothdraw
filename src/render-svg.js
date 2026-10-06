@@ -3,13 +3,16 @@
 // with currentColor, so the file inherits its colour from wherever it is
 // placed (or renders black when opened on its own).
 
+import { LINE_WIDTH } from './geom.js';
+
 /** @typedef {import('./builder.js').Drawing} Drawing */
 
 /**
  * @typedef {object} SvgOptions
  * @property {number} [width]        width attribute in px; height follows the frame ratio.
  *                                   Omitted: the SVG scales to its container.
- * @property {number} [strokeWidth]  stroke width in screen px (default 1)
+ * @property {number} [lineWidth]    stroke width in drawing units; it scales with the
+ *                                   plate. Default LINE_WIDTH: 1.5 px on a 900 px plate.
  * @property {number} [precision]    decimals per coordinate (default 1, i.e. 0.1 unit)
  * @property {string} [title]        becomes <title> (for screen readers and tooltips)
  * @property {string} [label]        the species name, drawn in italics at drawing.label.
@@ -23,7 +26,7 @@
  * @returns {string}
  */
 export function toSVG(drawing, options = {}) {
-  const { width, strokeWidth = 1, precision = 1, title, label } = options;
+  const { width, lineWidth = LINE_WIDTH, precision = 1, title, label } = options;
   const { points, offsets } = drawing;
   const f = 10 ** precision;
   const lines = offsets.length - 1;
@@ -48,11 +51,11 @@ export function toSVG(drawing, options = {}) {
   const text = label
     ? `<text x="${lb.x}" y="${lb.y}" font-size="${lb.size}" font-style="italic" text-anchor="middle" fill="currentColor">${escapeXml(label)}</text>`
     : '';
-  // non-scaling-stroke keeps the line weight constant at any display size.
+  // The stroke is in drawing units, so the line weight scales with the plate.
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}"${size}>${titleTag}` +
-    `<path d="${d}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" ` +
-    `stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${text}</svg>`
+    `<path d="${d}" fill="none" stroke="currentColor" stroke-width="${Math.round(lineWidth * 1000) / 1000}" ` +
+    `stroke-linecap="round" stroke-linejoin="round"/>${text}</svg>`
   );
 }
 

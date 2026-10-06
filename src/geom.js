@@ -6,6 +6,12 @@
 export const TAU = Math.PI * 2;
 
 /**
+ * Default line weight for both renderers, in drawing units: 1.5 px on a
+ * 900 px wide plate (the frame is 1000 units wide), scaling with the plate.
+ */
+export const LINE_WIDTH = (1.5 * 1000) / 900;
+
+/**
  * @param {number} a
  * @param {number} b
  * @param {number} t

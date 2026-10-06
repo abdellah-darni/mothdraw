@@ -11,7 +11,6 @@ import { drawVisible } from './clip.js';
 import { noise2 } from './noise.js';
 import { drawWingPattern } from './pattern.js';
 import { Polyline } from './polyline.js';
-import { triangular } from './rng.js';
 import { ProfileShape } from './shapes.js';
 import { buildForewing, buildHindwing, Wing } from './wings.js';
 
@@ -51,11 +50,12 @@ const TUNED_SCALE = 1.25;
 /**
  * @param {Builder} b
  * @param {Plan} plan
- * @param {Rng} rng  detail stream: texture, fringe, pattern variants
+ * @param {import('./pattern.js').Look} look  pattern numbers (samplePattern)
+ * @param {Rng} rng  detail stream: texture and fringe placement
  * @param {{ width: number, height: number }} box  where the specimen will be fitted
  * @param {number} density  texture density, 1 by default
  */
-export function drawMoth(b, plan, rng, box, density) {
+export function drawMoth(b, plan, look, rng, box, density) {
   buildBody(plan.body, L, head, thorax, abdomen, anchors);
   buildForewing(fore, plan.fore, plan.look, L, anchors.foreX, anchors.foreY, rng);
   buildHindwing(hind, plan.hind, plan.fore, plan.look, L, anchors.hindX, anchors.hindY, anchors.foreX, anchors.foreY, rng);
@@ -67,7 +67,7 @@ export function drawMoth(b, plan, rng, box, density) {
   drawVisible(b, LAYER.BODY, false, bodyPl.xy, bodyPl.n, true, null, BEHIND_THORAX);
   abdomen.outline(bodyPl);
   drawVisible(b, LAYER.BODY, false, bodyPl.xy, bodyPl.n, true, null, BEHIND_THORAX);
-  drawBodyDetail(b, plan.family, head, thorax, abdomen, rng);
+  drawBodyDetail(b, look, head, thorax, abdomen, rng);
 
   drawVisible(b, LAYER.WING, true, fore.outline.xy, fore.outline.n, true, null, BEHIND_BODY);
   drawVisible(b, LAYER.WING, true, hind.outline.xy, hind.outline.n, true, null, BEHIND_FOREWING);
@@ -82,20 +82,17 @@ export function drawMoth(b, plan, rng, box, density) {
   const scale = Math.min(box.width / (2 * halfSpan), box.height / (bottom - top));
   ctx.spacing = TUNED_SCALE / scale / Math.sqrt(density);
 
-  // Patterns. The variant and the inchworm speckle density are chosen once
-  // so both wings match.
-  const pepper = triangular(rng, 0.12, 0.28, 0.48);
-  const variant = rng();
+  // Patterns, from the same numbers on both wings.
   ctx.b = b;
   ctx.rng = rng;
   ctx.w = fore;
   ctx.occ = BEHIND_BODY;
   ctx.skip = null;
-  drawWingPattern(ctx, plan.family, true, false, pepper, variant);
+  drawWingPattern(ctx, plan.family, true, false, look);
   ctx.w = hind;
   ctx.occ = BEHIND_FOREWING;
   ctx.skip = fore.shape;
-  drawWingPattern(ctx, plan.family, false, plan.hind.tail, pepper, variant);
+  drawWingPattern(ctx, plan.family, false, plan.hind.tail, look);
 
   drawFringe(b, fore, BEHIND_BODY);
   drawFringe(b, hind, BEHIND_FOREWING);

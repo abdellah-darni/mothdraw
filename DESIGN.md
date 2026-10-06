@@ -249,7 +249,15 @@ Proportions come from four real families. Each family is a table of
 - The hindwing base sits level with the forewing base, so the forewing
   covers the hindwing's leading edge all the way to the body.
 
-Stage 4 adds blending between plans. Stage 2 picks one family per seed.
+**Blending (stage 4).** Each moth has a main family and leans towards a
+second one:
+- Every proportion is sampled from both families' ranges and blended.
+- The blend is usually 10 to 20 percent and at most 40 (triangular
+  0 / 0.12 / 0.4).
+- Things that cannot be blended (antenna type, whether there are tails,
+  the pattern) come from the main family.
+- Antenna types: thread, serrate (saw teeth on owlet and inchworm moths),
+  hooked (hawk moths) and feathery.
 
 ### 3.4 Detail and texture (stage 3)
 
@@ -275,20 +283,32 @@ of amplitude, bumps 38 units apart), cross lines, veins and the frame. The
 wobble is applied *before* the inside tests are built, so section 3.1 still
 holds exactly.
 
-**How the families are told apart:**
+**How the families are told apart.** Since stage 4, every pattern is
+controlled by continuous numbers. Each family has a table of
+`[low, typical, high]` ranges at the top of `src/pattern.js`, sampled once
+per moth from its own seed stream. So two moths of a family differ by
+degrees rather than falling into a few fixed variants.
 
-| family | texture | marks |
+| family | texture | marks, and what varies continuously |
 |---|---|---|
-| Noctuidae | dense radial dashes; cross-hatched where darkest | double zigzag and toothed cross lines; kidney and ring spots; hindwing with a dark border (*Noctua*) or two dark bands (*Catocala*) |
-| Geometridae | fine speckle in random directions | crisp thin lines carried across both wings; discal dots; dots along the margin. Three variants: peppered, banded (dark median band), clean (doubled lines) |
-| Sphingidae | long streaks along the wing | streaked variant (dark central streak, banded hindwing) or banded variant (pale oblique band on a dark wing, pale band on the hindwing); banded abdomen |
-| Saturniidae | strokes laid across the radial direction, following the bands; crossed where dark | dark costal stripe; smooth postmedial line; eyespots, large on hindwings without tails |
+| Noctuidae | dense radial dashes; cross-hatched where darkest | double cross lines whose shape blends from smooth wave to zigzag to teeth; kidney and ring spots of varying size (the ring can vanish); hindwing ground from pale to dusky, a dark border of varying width and strength, and a second band (*Catocala*) |
+| Geometridae | fine speckle in random directions | crisp thin lines carried across both wings; speckle density, dark median band strength, doubled outer line, subterminal line, discal dot size and margin dots all vary, spanning peppered, banded and clean looks |
+| Sphingidae | long streaks along the wing | 0 to 3 dark streaks; a signed oblique band (pale on dark, dark on pale, or none) of varying slope and width; 0 to 3 hindwing bands, hindwing ground and base darkness; an occasional hindwing eyespot (the eyed hawk-moth); strongly banded abdomen |
+| Saturniidae | hatching at an angle that varies per moth, crossed where dark | eyespots vary in number (0 or 1 per forewing, 1 or 2 per hindwing), position, size, shape, ring count (2 to 4) and window (clear, or a solid dark pupil); costal stripe, pale band and dark margin strengths |
+
+Abdomen banding is continuous for all families (strong on hawk moths).
 
 **The same ink density on the page for every moth.** Texture cells are set
 in page units: before the pattern is drawn, the specimen's final scale is
 estimated from the built wings and body. Without that, wide moths (scaled
 down more) came out denser than narrow ones. `generate(seed, { density })`
 then scales the number of texture strokes, with 1 as the default.
+
+**Point budget.** At the default density, the darkest moths (about 1.5 in
+100) would go over 14,500 points. They are redrawn once with the texture
+loosened just enough to fit. Every element is kept; only those moths get
+slightly sparser texture. Only the texture scales with density, so the
+correction assumes about 35 percent of the points are fixed.
 
 **Body.** Hair on the thorax and head; a collar and tegulae (the shoulder
 covers over the wing bases); eyes; abdominal segments bowed backward; hair
@@ -299,8 +319,26 @@ clean corners), the specimen fitted to a box above, and the name below.
 The name is *text*, not lines. `Drawing.label` gives its position and size,
 and each renderer draws it in italics in the page's font: SVG `<text>`
 without a font-family, and canvas `fillText` with the page's computed
-font. Until stage 4 the name is "*Family* sp.", the naturalist's label for
-an unidentified species.
+font.
+
+**Line weight (stage 4).** Both renderers take a `lineWidth` in drawing
+units, defaulting to `LINE_WIDTH`: 1.5 px on a 900 px plate. The line scales
+with the plate, as an engraving's would.
+
+### 3.6 Names (stage 4)
+
+`src/name.js` builds a pseudo-Latin *Genus species* from syllables:
+- The building blocks are onsets, vowels and joining consonants, and an
+  ending chosen by family. The endings follow real habits: inchworm
+  species often end in *-aria* or *-ata*, hawk moth genera in *-es* or
+  *-on*, silk moth genera in *-a* or *-ias*.
+- Words that do not read as Latin are rejected and redrawn: a letter three
+  times running, a stutter (*tete*), three vowels or four consonants in a
+  row, more than one diphthong, or a leading *y*.
+- The name has its own seed stream, so the same seed always gives the same
+  name, and changes to drawing code never change it.
+- The data costs a few hundred bytes. 5,000 seeds gave 5,000 distinct
+  names.
 
 ### 3.5 Pen animation plan (stage 5)
 
@@ -416,20 +454,25 @@ src/
   pattern.js        tone functions, stroke fields, cross lines, veins, spots
   moth.js           assembles one moth: builds parts, draws them in depth order
   plans.js          body plans and blending
-  name.js           pseudo-Latin names
+  name.js           pseudo-Latin names from syllables
   generate.js       generate(seed, options)
   render-canvas.js  draws a Drawing (full, or progressively up to a length)
   render-svg.js     Drawing -> SVG string with one <path>
   mount.js  worker.js   continuous mode (stage 5)
   index.js          public exports
 bench/bench.js       npm run bench
-tools/contact-sheet.js  24 seeds -> PNG via headless Chrome
+tools/contact-sheet.js  seeds -> PNG via headless Chrome (--count, --cols, --cell)
+tools/similar.js     ranks pairs of plates by how alike they look
 demo/index.html      one moth from ?seed=
 ```
 
 ## 7. Where the time should go
 
-**Measured at stage 3** (1,000 moths, M2): median **2.0 ms**, p95
+**Measured at stage 4** (1,000 moths, M2): median **2.2 ms**, p95
+**3.6 ms**, max 5.7 ms; about 11,100 points (max 14,910 after the point
+budget); bundle 13.4 KB after Brotli.
+
+**Measured at stage 3**: median **2.0 ms**, p95
 **3.3 ms**, about 11,100 points. That is under the 3 to 8 ms first
 estimated, and far under the 20 ms target. One run in one bench took
 22 ms; reruns peaked at 4.1 and 4.6 ms, which points to a
@@ -475,6 +518,16 @@ comfortable, and the bench will report the real number every stage.
   No extra dependency is needed.
 - **Visual check** (stage 2 onwards): a contact sheet of 24 seeds rendered
   through the real SVG renderer and saved as PNG by headless Chrome.
+- **Variety** (stage 4 onwards): `npm run similar` works through the first
+  100 seeds:
+  - It lays each plate's ink onto a 64 × 48 grid (line length per cell,
+    the frame excluded) and blurs it slightly.
+  - It ranks all 4,950 pairs by correlation and renders the closest pairs
+    side by side.
+  - This measures silhouette and where the dark areas fall, not individual
+    strokes. Because every plate is centred, symmetric and framed alike,
+    even random pairs correlate around 0.74. The useful numbers are the
+    tail (p99, max) and which families sit there.
 
 ## 9. Risks
 

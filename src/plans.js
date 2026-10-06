@@ -6,7 +6,7 @@
 // Lengths, including corner radii, are fractions of the forewing's costa
 // length; angles are in degrees. "Forward" means towards the head.
 
-import { chance, pick, triangular } from './rng.js';
+import { chance, pick, sampleRanges, triangular } from './rng.js';
 
 /** @typedef {import('./rng.js').Rng} Rng */
 /** @typedef {[number, number, number]} Range */
@@ -56,7 +56,7 @@ import { chance, pick, triangular } from './rng.js';
 
 /**
  * @typedef {object} AntennaSpec
- * @property {readonly string[]} types   'thread' | 'hooked' | 'feather'
+ * @property {readonly string[]} types   'thread' | 'serrate' | 'hooked' | 'feather'
  * @property {readonly number[]} weights
  * @property {Range} length
  * @property {Range} angle     from the body axis
@@ -90,21 +90,21 @@ export const FAMILIES = [
     name: 'Sphingidae',
     weight: 2,
     fore: {
-      costaAngle: [14, 18, 23],
-      dorsumLength: [0.45, 0.5, 0.56],
-      dorsumAngle: [6, 10, 14],
+      costaAngle: [12, 18, 30],
+      dorsumLength: [0.42, 0.52, 0.66],
+      dorsumAngle: [2, 10, 16],
       costaBow: [0.01, 0.02, 0.035],
-      termenBow1: [-0.05, -0.01, 0.03],
+      termenBow1: [-0.08, -0.01, 0.06],
       termenBow2: [0.02, 0.06, 0.1],
       dorsumBow: [-0.02, 0.01, 0.04],
-      apexRound: [0.008, 0.02, 0.035],
+      apexRound: [0.005, 0.02, 0.05],
       tornusRound: [0.025, 0.04, 0.06],
     },
     hind: {
       reach: [0.85, 0.95, 1.05],
       tuck: [0.04, 0.06, 0.08],
-      size: [0.3, 0.36, 0.42],
-      analAngle: [50, 58, 66],
+      size: [0.3, 0.38, 0.52],
+      analAngle: [44, 56, 70],
       termenBow: [0.08, 0.12, 0.16],
       innerBow: [0.0, 0.03, 0.06],
       apexRound: [0.03, 0.04, 0.05],
@@ -118,20 +118,20 @@ export const FAMILIES = [
       headRadius: [0.05, 0.06, 0.07],
       thoraxLength: [0.2, 0.23, 0.26],
       thoraxWidth: [0.08, 0.095, 0.11],
-      abdomenLength: [0.62, 0.7, 0.8],
-      abdomenWidth: [0.075, 0.088, 0.1],
+      abdomenLength: [0.5, 0.68, 0.85],
+      abdomenWidth: [0.06, 0.088, 0.11],
       abdomenWidest: [0.18, 0.25, 0.32],
       abdomenTip: [1.2, 1.5, 1.9],
     },
     antenna: {
       types: ['hooked'],
       weights: [1],
-      length: [0.32, 0.38, 0.44],
-      angle: [22, 28, 34],
-      curve: [4, 10, 16],
+      length: [0.25, 0.36, 0.48],
+      angle: [18, 28, 40],
+      curve: [0, 10, 24],
       width: [0.01, 0.013, 0.016],
     },
-    look: { scallops: [6, 7, 9], scallopDepth: [0.001, 0.003, 0.005], fringe: [0.006, 0.008, 0.011] },
+    look: { scallops: [6, 7, 9], scallopDepth: [0.001, 0.003, 0.012], fringe: [0.006, 0.008, 0.011] },
   },
   {
     // Giant silk moths (Antheraea polyphemus, Actias luna, Saturnia
@@ -209,7 +209,7 @@ export const FAMILIES = [
       innerBow: [0.0, 0.03, 0.06],
       apexRound: [0.04, 0.06, 0.08],
       tornusRound: [0.1, 0.13, 0.16],
-      tailChance: 0.25,
+      tailChance: 0.15,
       tailLength: [0.06, 0.09, 0.13],
       tailAngle: [55, 68, 80],
       tailTip: [0.001, 0.002, 0.004],
@@ -224,8 +224,8 @@ export const FAMILIES = [
       abdomenTip: [1.4, 1.8, 2.4],
     },
     antenna: {
-      types: ['thread', 'feather'],
-      weights: [3, 1],
+      types: ['thread', 'serrate', 'feather'],
+      weights: [3, 1, 1],
       length: [0.4, 0.48, 0.56],
       angle: [22, 29, 36],
       curve: [4, 12, 20],
@@ -240,8 +240,8 @@ export const FAMILIES = [
     name: 'Noctuidae',
     weight: 3,
     fore: {
-      costaAngle: [18, 23, 28],
-      dorsumLength: [0.6, 0.66, 0.72],
+      costaAngle: [16, 23, 30],
+      dorsumLength: [0.56, 0.66, 0.76],
       dorsumAngle: [2, 6, 10],
       costaBow: [0.008, 0.02, 0.035],
       termenBow1: [0.0, 0.04, 0.08],
@@ -253,8 +253,8 @@ export const FAMILIES = [
     hind: {
       reach: [0.85, 0.92, 1.0],
       tuck: [0.07, 0.1, 0.13],
-      size: [0.5, 0.56, 0.62],
-      analAngle: [60, 68, 76],
+      size: [0.46, 0.56, 0.66],
+      analAngle: [56, 68, 80],
       termenBow: [0.18, 0.24, 0.3],
       innerBow: [0.0, 0.03, 0.06],
       apexRound: [0.05, 0.07, 0.09],
@@ -274,8 +274,8 @@ export const FAMILIES = [
       abdomenTip: [1.5, 2, 2.6],
     },
     antenna: {
-      types: ['thread'],
-      weights: [1],
+      types: ['thread', 'serrate'],
+      weights: [3, 1],
       length: [0.42, 0.5, 0.58],
       angle: [20, 26, 32],
       curve: [4, 10, 16],
@@ -288,7 +288,9 @@ export const FAMILIES = [
 /**
  * A concrete moth: every range replaced by one number.
  * @typedef {object} Plan
- * @property {string} family
+ * @property {string} family   the main family (its pattern and antenna type)
+ * @property {string} leansTo  the second family its proportions lean towards
+ * @property {number} mix      how far, 0 to 0.4
  * @property {Record<keyof ForewingSpec, number>} fore
  * @property {Record<Exclude<keyof HindwingSpec, 'tailChance'>, number> & { tail: boolean }} hind
  * @property {Record<keyof BodySpec, number>} body
@@ -297,32 +299,40 @@ export const FAMILIES = [
  */
 
 /**
- * @param {Rng} rng
- * @param {Record<string, any>} spec
- * @returns {Record<string, number>}
+ * Moves every number in `a` the fraction `t` of the way towards `b`.
+ * @param {Record<string, number>} a
+ * @param {Record<string, number>} b
+ * @param {number} t
  */
-function sampleRanges(rng, spec) {
-  /** @type {Record<string, number>} */
-  const out = {};
-  for (const key in spec) {
-    const v = spec[key];
-    if (Array.isArray(v) && v.length === 3 && typeof v[0] === 'number') out[key] = triangular(rng, v[0], v[1], v[2]);
-  }
-  return out;
+function blend(a, b, t) {
+  for (const key in a) a[key] += (b[key] - a[key]) * t;
+  return a;
 }
 
 /**
- * Picks a family and samples one moth from it.
+ * Samples one moth. It belongs to one family but leans towards a second:
+ * every proportion is sampled from both families' ranges and blended,
+ * usually by 10 to 20 percent and at most 40. Things that cannot be
+ * blended (antenna type, whether there are tails, the pattern) come from
+ * the main family.
  * @param {Rng} rng
  * @returns {Plan}
  */
 export function samplePlan(rng) {
   const f = pick(rng, FAMILIES, FAMILIES.map((x) => x.weight));
-  const fore = /** @type {Plan['fore']} */ (sampleRanges(rng, f.fore));
-  const hind = /** @type {Plan['hind']} */ (sampleRanges(rng, f.hind));
+  const g = pick(rng, FAMILIES.filter((x) => x !== f));
+  const mix = triangular(rng, 0, 0.12, 0.4);
+
+  const fore = /** @type {Plan['fore']} */ (blend(sampleRanges(rng, f.fore), sampleRanges(rng, g.fore), mix));
+  const ownHind = sampleRanges(rng, f.hind);
+  const hind = /** @type {Plan['hind']} */ (blend({ ...ownHind }, sampleRanges(rng, g.hind), mix));
+  // Tails belong to the main family; a tailless family would shrink them.
+  hind.tailLength = ownHind.tailLength;
+  hind.tailAngle = ownHind.tailAngle;
+  hind.tailTip = ownHind.tailTip;
   hind.tail = chance(rng, f.hind.tailChance);
-  const body = /** @type {Plan['body']} */ (sampleRanges(rng, f.body));
-  const a = sampleRanges(rng, f.antenna);
+  const body = /** @type {Plan['body']} */ (blend(sampleRanges(rng, f.body), sampleRanges(rng, g.body), mix));
+  const a = blend(sampleRanges(rng, f.antenna), sampleRanges(rng, g.antenna), mix);
   const antenna = {
     type: pick(rng, f.antenna.types, f.antenna.weights),
     length: a.length,
@@ -330,7 +340,7 @@ export function samplePlan(rng) {
     curve: a.curve,
     width: a.width,
   };
-  const look = /** @type {Plan['look']} */ (sampleRanges(rng, f.look));
+  const look = /** @type {Plan['look']} */ (blend(sampleRanges(rng, f.look), sampleRanges(rng, g.look), mix));
   look.scallops = Math.round(look.scallops);
-  return { family: f.name, fore, hind, body, antenna, look };
+  return { family: f.name, leansTo: g.name, mix, fore, hind, body, antenna, look };
 }

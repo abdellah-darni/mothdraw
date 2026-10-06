@@ -2,6 +2,7 @@
 // Antennae: a curved shaft from the head, set forward in a V as on a
 // pinned specimen. Three forms:
 //   thread   a single fine line (most moths)
+//   serrate  a fine line with small saw teeth on its outer side
 //   hooked   a thickened shaft ending in a small hook (hawk moths)
 //   feather  a shaft with comb-like branches on both sides (silk moths)
 
@@ -62,8 +63,28 @@ export function drawAntenna(b, p, L, x0, y0, maxAngle, spine, outline, occ) {
   const xy = spine.xy;
   const n = spine.n;
 
-  if (p.type === 'thread') {
+  if (p.type === 'thread' || p.type === 'serrate') {
     drawVisible(b, LAYER.ANTENNA, true, xy, n, false, null, occ);
+    if (p.type === 'serrate') {
+      // A tooth on every other segment, leaning towards the tip, shrinking
+      // along the length.
+      for (let i = 4; i < n - 2; i += 2) {
+        const t = i / (n - 1);
+        const tx = xy[2 * i + 2] - xy[2 * i - 2];
+        const ty = xy[2 * i + 3] - xy[2 * i - 1];
+        const tl = Math.hypot(tx, ty);
+        const l = 0.007 * L * (1 - 0.6 * t);
+        // Outer side is to the right of travel for the right antenna.
+        const c = Math.cos(50 * DEG);
+        const s = Math.sin(50 * DEG);
+        const dx = (tx / tl) * c - (ty / tl) * s;
+        const dy = (ty / tl) * c + (tx / tl) * s;
+        b.begin(LAYER.ANTENNA, true);
+        b.point(xy[2 * i], xy[2 * i + 1]);
+        b.point(xy[2 * i] + dx * l, xy[2 * i + 1] + dy * l);
+        b.end();
+      }
+    }
     return;
   }
 

@@ -147,13 +147,15 @@ function hair(b, s, occ, rng, cell, len, splay, density) {
 /**
  * Body detail: hair on thorax and head, eyes, collar and tegulae (the
  * shoulder covers at the wing bases), abdominal segments with shading at
- * the sides, and lateral tufts. Hawk moths get banded abdomens.
+ * the sides, and lateral tufts. Alternate segments are darkened at the
+ * sides by `abdomenBands` (strong on hawk moths), from `abdomenLateral`
+ * of the way out from the midline.
  * @param {Builder} b
- * @param {string} family
+ * @param {Record<string, number>} look  uses look.abdomenBands and look.abdomenLateral
  * @param {ProfileShape} head @param {ProfileShape} thorax @param {ProfileShape} abdomen
  * @param {Rng} rng
  */
-export function drawBodyDetail(b, family, head, thorax, abdomen, rng) {
+export function drawBodyDetail(b, look, head, thorax, abdomen, rng) {
   const behindThorax = [thorax];
   const tw = thorax.maxW;
   const tl = thorax.dy * (thorax.n - 1);
@@ -196,7 +198,6 @@ export function drawBodyDetail(b, family, head, thorax, abdomen, rng) {
   const ay0 = abdomen.y0;
   const al = abdomen.dy * (abdomen.n - 1);
   const segs = 7;
-  const banded = family === 'Sphingidae';
   for (let k = 1; k <= segs; k++) {
     const y = ay0 + al * (0.1 + (0.8 * k) / (segs + 1));
     const w = widthAt(abdomen, y);
@@ -210,10 +211,8 @@ export function drawBodyDetail(b, family, head, thorax, abdomen, rng) {
   }
   hair(b, abdomen, behindThorax, rng, 3.2, 4.5, 0.5, (f, y) => {
     let t = 0.15 + 0.6 * f * f;
-    if (banded) {
-      const s = (((y - ay0) / al - 0.1) * (segs + 1)) / 0.8;
-      if (f > 0.35 && Math.floor(s) % 2 === 1) t += 0.6;
-    }
+    const s = (((y - ay0) / al - 0.1) * (segs + 1)) / 0.8;
+    if (f > look.abdomenLateral && Math.floor(s) % 2 === 1) t += 0.7 * look.abdomenBands;
     return t;
   });
   for (let y = ay0 + al * 0.15; y < ay0 + al * 0.95; y += 4) {

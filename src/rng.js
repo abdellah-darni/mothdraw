@@ -144,3 +144,21 @@ export function pick(rng, items, weights) {
   }
   return items[items.length - 1];
 }
+
+/**
+ * Samples every [low, typical, high] range in a table (other entries are
+ * skipped), in the table's key order, so the result is the same for the
+ * same generator state.
+ * @param {Rng} rng
+ * @param {Record<string, any>} spec
+ * @returns {Record<string, number>}
+ */
+export function sampleRanges(rng, spec) {
+  /** @type {Record<string, number>} */
+  const out = {};
+  for (const key in spec) {
+    const v = spec[key];
+    if (Array.isArray(v) && v.length === 3 && typeof v[0] === 'number') out[key] = triangular(rng, v[0], v[1], v[2]);
+  }
+  return out;
+}
