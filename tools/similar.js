@@ -1,10 +1,15 @@
-// npm run similar [-- --count 100 --pairs 5 --out out/similar.png]
+// npm run similar [-- --count 100 --pairs 5 --out out/similar.png --crop]
 // Finds the pairs of seeds whose plates look most alike, by numbers rather
 // than by eye: each drawing's ink (line length) is laid onto a coarse grid,
 // blurred a little so near misses still match, and every pair is compared
 // by correlation. This measures silhouette and where the dark areas fall,
 // which is what makes two plates look alike at a glance; it does not
 // compare individual strokes. The top pairs are rendered side by side.
+//
+// --crop measures each specimen inside its own bounding box instead of the
+// whole plate, so size on the plate drops out and only shape and pattern
+// count. (On the plate, two small specimens share wide empty margins, which
+// the plate-level number counts as likeness.)
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -21,6 +26,7 @@ const arg = (name, fallback) => {
 const COUNT = Number(arg('--count', '100'));
 const PAIRS = Number(arg('--pairs', '5'));
 const out = resolve(arg('--out', 'out/similar.png'));
+const CROP = args.includes('--crop');
 const chrome = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 const GW = 64;
@@ -30,7 +36,30 @@ const FRAME_LINES = 4;
 
 /** Ink length per grid cell, blurred, centred and normalised. */
 function signature(drawing) {
-  const { points, offsets, width, height } = drawing;
+  const { points, offsets } = drawing;
+  // The area mapped onto the grid: the whole plate, or the specimen's own
+  // bounding box (same aspect as the plate, centred) with --crop.
+  let x0b = 0;
+  let y0b = 0;
+  let width = drawing.width;
+  let height = drawing.height;
+  if (CROP) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (let i = 2 * offsets[FRAME_LINES]; i < points.length; i += 2) {
+      minX = Math.min(minX, points[i]);
+      maxX = Math.max(maxX, points[i]);
+      minY = Math.min(minY, points[i + 1]);
+      maxY = Math.max(maxY, points[i + 1]);
+    }
+    const k = Math.max((maxX - minX) / drawing.width, (maxY - minY) / drawing.height);
+    width = drawing.width * k;
+    height = drawing.height * k;
+    x0b = (minX + maxX - width) / 2;
+    y0b = (minY + maxY - height) / 2;
+  }
   let g = new Float64Array(GW * GH);
   for (let l = FRAME_LINES; l < offsets.length - 1; l++) {
     for (let v = offsets[l] + 1; v < offsets[l + 1]; v++) {
@@ -42,8 +71,8 @@ function signature(drawing) {
       const n = Math.max(1, Math.ceil(len / 2));
       for (let k = 0; k < n; k++) {
         const t = (k + 0.5) / n;
-        const cx = Math.min(GW - 1, Math.floor(((x0 + (x1 - x0) * t) / width) * GW));
-        const cy = Math.min(GH - 1, Math.floor(((y0 + (y1 - y0) * t) / height) * GH));
+        const cx = Math.max(0, Math.min(GW - 1, Math.floor(((x0 + (x1 - x0) * t - x0b) / width) * GW)));
+        const cy = Math.max(0, Math.min(GH - 1, Math.floor(((y0 + (y1 - y0) * t - y0b) / height) * GH)));
         g[cy * GW + cx] += len / n;
       }
     }

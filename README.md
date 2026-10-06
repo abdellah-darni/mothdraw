@@ -39,7 +39,7 @@ which can be transferred from a worker without copying. See
 | `npm run bench` | builds the bundle, generates 1,000 moths, prints timing, point count, bundle size and heap |
 | `npm run serve` | serves the demo at `http://127.0.0.1:8080/demo/?seed=…` |
 | `npm run sheet` | renders 24 seeds to `out/contact-sheet.png` with headless Chrome (`-- --count 100 --cols 10 --cell 300` for more; set `CHROME` to point at another Chrome binary) |
-| `npm run similar` | ranks the first 100 seeds' plates by how alike they look and renders the closest pairs to `out/similar.png` |
+| `npm run similar` | ranks the first 100 seeds' plates by how alike they look and renders the closest pairs to `out/similar.png` (`-- --crop` compares specimens without their size on the plate) |
 | `npm run build` | minified ES module bundle in `dist/` |
 
 Node 22 or later. No runtime dependencies; esbuild is the only dev

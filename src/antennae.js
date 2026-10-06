@@ -9,6 +9,7 @@
 import { LAYER } from './builder.js';
 import { drawVisible } from './clip.js';
 import { smoothstep } from './geom.js';
+import { outlineAround } from './polyline.js';
 
 /** @typedef {import('./builder.js').Builder} Builder */
 /** @typedef {import('./polyline.js').Polyline} Polyline */
@@ -64,7 +65,11 @@ export function drawAntenna(b, p, L, x0, y0, maxAngle, spine, outline, occ) {
   const n = spine.n;
 
   if (p.type === 'thread' || p.type === 'serrate') {
-    drawVisible(b, LAYER.ANTENNA, true, xy, n, false, null, occ);
+    // A slim tapering shape rather than a hairline: widest at the base,
+    // narrowing to a point.
+    const w0 = 0.0045 * L;
+    outlineAround(spine, outline, (t) => w0 * (1 - 0.9 * t));
+    drawVisible(b, LAYER.ANTENNA, true, outline.xy, outline.n, true, null, occ);
     if (p.type === 'serrate') {
       // A tooth on every other segment, leaning towards the tip, shrinking
       // along the length.
@@ -79,9 +84,11 @@ export function drawAntenna(b, p, L, x0, y0, maxAngle, spine, outline, occ) {
         const s = Math.sin(50 * DEG);
         const dx = (tx / tl) * c - (ty / tl) * s;
         const dy = (ty / tl) * c + (tx / tl) * s;
+        const ex = xy[2 * i] + dx * w0 * (1 - 0.9 * t);
+        const ey = xy[2 * i + 1] + dy * w0 * (1 - 0.9 * t);
         b.begin(LAYER.ANTENNA, true);
-        b.point(xy[2 * i], xy[2 * i + 1]);
-        b.point(xy[2 * i] + dx * l, xy[2 * i + 1] + dy * l);
+        b.point(ex, ey);
+        b.point(ex + dx * l, ey + dy * l);
         b.end();
       }
     }
@@ -89,32 +96,17 @@ export function drawAntenna(b, p, L, x0, y0, maxAngle, spine, outline, occ) {
   }
 
   if (p.type === 'hooked') {
-    // A closed outline around the shaft: thickest in the outer third (the
-    // club), thinning into the hook.
+    // Thickest in the outer third (the club), thinning into the hook.
     const w0 = p.width * L;
-    outline.reset();
-    for (let pass = 0; pass < 2; pass++) {
-      const side = pass === 0 ? 1 : -1;
-      for (let k = 0; k < n; k++) {
-        const i = pass === 0 ? k : n - 1 - k;
-        const t = i / (n - 1);
-        const w = w0 * (0.45 + 0.75 * smoothstep(0, 0.7, t) - 1.1 * smoothstep(0.75, 1, t));
-        const j0 = i > 0 ? i - 1 : i;
-        const j1 = i < n - 1 ? i + 1 : i;
-        const tx = xy[2 * j1] - xy[2 * j0];
-        const ty = xy[2 * j1 + 1] - xy[2 * j0 + 1];
-        const tl = Math.hypot(tx, ty);
-        // Normal to the shaft, on the outer side for side = 1.
-        outline.push(xy[2 * i] - (ty / tl) * w * side, xy[2 * i + 1] + (tx / tl) * w * side);
-      }
-    }
+    outlineAround(spine, outline, (t) => w0 * (0.45 + 0.75 * smoothstep(0, 0.7, t) - 1.1 * smoothstep(0.75, 1, t)));
     drawVisible(b, LAYER.ANTENNA, true, outline.xy, outline.n, true, null, occ);
     return;
   }
 
-  // Feather: the shaft plus paired branches angled towards the tip,
+  // Feather: a tapering shaft plus paired branches angled towards the tip,
   // longest a little before the middle, giving a leaf-shaped outline.
-  drawVisible(b, LAYER.ANTENNA, true, xy, n, false, null, occ);
+  outlineAround(spine, outline, (t) => 0.004 * L * (1 - 0.85 * t));
+  drawVisible(b, LAYER.ANTENNA, true, outline.xy, outline.n, true, null, occ);
   const wMax = p.width * L;
   // One pair every other shaft segment: denser reads as a solid blob.
   for (let i = 3; i < n - 1; i += 2) {

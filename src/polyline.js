@@ -74,6 +74,8 @@ export class EdgeLoop {
      * vertices mark[i] .. mark[i+1]-1 are edge i followed by its end corner.
      */
     this.mark = new Int32Array(17);
+    /** After sample(): corner[i] is the index of the first vertex of the corner at the end of edge i. */
+    this.corner = new Int32Array(16);
   }
 
   reset() {
@@ -190,6 +192,7 @@ export class EdgeLoop {
         out.push(bez(e[o], e[o + 2], e[o + 4], e[o + 6], t), bez(e[o + 1], e[o + 3], e[o + 5], e[o + 7], t));
       }
       // The rounded corner into the next edge.
+      this.corner[i] = out.n;
       const j = (i + 1) % count;
       const q = j * REC;
       const tb = e[o + 9];
@@ -359,4 +362,30 @@ export function simplifyClosed(src, dst, eps) {
   }
   dst.reset();
   for (let i = 0; i < n; i++) if (keep[i]) dst.push(xy[2 * i], xy[2 * i + 1]);
+}
+
+/**
+ * A closed outline around a centre line: out along one side and back along
+ * the other, at half-width widthAt(t) from the start (t = 0) to the end
+ * (t = 1). Used for tapering antennae and for wing marks.
+ * @param {Polyline} line @param {Polyline} out
+ * @param {(t: number) => number} widthAt
+ */
+export function outlineAround(line, out, widthAt) {
+  const xy = line.xy;
+  const n = line.n;
+  out.reset();
+  for (let pass = 0; pass < 2; pass++) {
+    const side = pass === 0 ? 1 : -1;
+    for (let k = 0; k < n; k++) {
+      const i = pass === 0 ? k : n - 1 - k;
+      const w = Math.max(0, widthAt(i / (n - 1)));
+      const j0 = i > 0 ? i - 1 : i;
+      const j1 = i < n - 1 ? i + 1 : i;
+      const tx = xy[2 * j1] - xy[2 * j0];
+      const ty = xy[2 * j1 + 1] - xy[2 * j0 + 1];
+      const tl = Math.hypot(tx, ty) || 1;
+      out.push(xy[2 * i] - (ty / tl) * w * side, xy[2 * i + 1] + (tx / tl) * w * side);
+    }
+  }
 }

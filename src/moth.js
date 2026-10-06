@@ -5,7 +5,7 @@
 // Depth, front to back: antennae, thorax, head, abdomen, forewing, hindwing.
 
 import { drawAntenna } from './antennae.js';
-import { buildBody, drawBodyDetail } from './body.js';
+import { buildAbdomen, buildBody, drawBodyDetail } from './body.js';
 import { LAYER } from './builder.js';
 import { drawVisible } from './clip.js';
 import { noise2 } from './noise.js';
@@ -42,10 +42,13 @@ const BEHIND_FOREWING = [thorax, abdomen, head, fore.shape];
 const BEHIND_HEAD = [head];
 
 /** @type {WingContext} */
-const ctx = { b: /** @type {any} */ (null), w: fore, occ: BEHIND_BODY, skip: null, rng: () => 0, L, spacing: 1 };
+const ctx = { b: /** @type {any} */ (null), w: fore, occ: BEHIND_BODY, skip: null, rng: () => 0, L, spacing: 1, cellEnd: 0.5 };
 
-/** Texture cells were tuned at this many frame units per model unit. */
-const TUNED_SCALE = 1.25;
+/**
+ * Sets the overall texture density on the page: texture cells are sized
+ * for this many frame units per model unit. Lower means denser.
+ */
+const TUNED_SCALE = 1.17;
 
 /**
  * @param {Builder} b
@@ -56,9 +59,10 @@ const TUNED_SCALE = 1.25;
  * @param {number} density  texture density, 1 by default
  */
 export function drawMoth(b, plan, look, rng, box, density) {
-  buildBody(plan.body, L, head, thorax, abdomen, anchors);
+  buildBody(plan.body, L, head, thorax, anchors);
   buildForewing(fore, plan.fore, plan.look, L, anchors.foreX, anchors.foreY, rng);
-  buildHindwing(hind, plan.hind, plan.fore, plan.look, L, anchors.hindX, anchors.hindY, anchors.foreX, anchors.foreY, rng);
+  const analY = buildHindwing(hind, plan.hind, plan.fore, plan.look, L, anchors.hindX, anchors.hindY, anchors.foreX, anchors.foreY, rng);
+  buildAbdomen(plan.body, L, thorax, abdomen, analY);
 
   // Body outlines are symmetric and drawn whole, so they are not mirrored.
   thorax.outline(bodyPl);

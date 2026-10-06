@@ -64,6 +64,9 @@ export class Wing {
     this.by = 0;
     /** Scallops on the termen; veins end at v = j / scallops. */
     this.scallops = 1;
+    /** Length of the termen, and the base-to-termen distance at mid-termen. */
+    this.termenLength = 1;
+    this.radius = 1;
   }
 
   /**
@@ -90,6 +93,8 @@ export class Wing {
       this.my[k] = t[2 * j + 1] + (t[2 * j + 3] - t[2 * j + 1]) * f;
       this.ma[k] = Math.atan2(this.my[k] - this.by, this.mx[k] - this.bx);
     }
+    this.termenLength = cum[n - 1];
+    this.radius = Math.hypot(this.mx[K >> 1] - this.bx, this.my[K >> 1] - this.by);
   }
 
   /**
@@ -219,17 +224,19 @@ export function buildForewing(w, p, look, L, bx, by, rng) {
   const ty = by + L * p.dorsumLength * Math.sin(da);
 
   loop.reset();
-  loop.bulge(bx, by, ax, ay, p.costaBow * 0.6, p.costaBow, p.apexRound * L);
+  loop.bulge(bx, by, ax, ay, p.costaBow, p.costaBow * 0.35, p.apexRound * L);
   loop.bulge(ax, ay, tx, ty, p.termenBow1, p.termenBow2, p.tornusRound * L);
   loop.bulge(tx, ty, bx, by, p.dorsumBow, p.dorsumBow * 0.5, 0.02 * L);
   loop.sample(w.fine, STEP);
 
-  // Edge 1 is the termen.
+  // Edge 1 is the termen. The coordinate table uses the edge alone, without
+  // the rounded tornus corner, so it extends straight past the ends.
   const m = loop.mark;
+  const cn = loop.corner;
   w.bx = bx;
   w.by = by;
   w.scallops = look.scallops;
-  w.setTermen(m[1], m[2], 0, 0);
+  w.setTermen(m[1], cn[1], 0, 0);
   scallop(w.fine, m[1], m[2], look.scallops, look.scallopDepth * L);
   w.finish(m[1], m[2], 0, 0, look.fringe * L, rng, 11.3);
 }
@@ -251,6 +258,7 @@ export function buildForewing(w, p, look, L, bx, by, rng) {
  * @param {number} fx  forewing base
  * @param {number} fy
  * @param {Rng} rng
+ * @returns {number} y of the anal angle (the abdomen's length is set from it)
  */
 export function buildHindwing(w, p, fore, look, L, bx, by, fx, fy, rng) {
   const da = fore.dorsumAngle * DEG;
@@ -312,13 +320,15 @@ export function buildHindwing(w, p, fore, look, L, bx, by, fx, fy, rng) {
 
   // The termen is edge 1, or edges 1 and 5 when a tail (edges 2-4) splits it.
   const m = loop.mark;
+  const cn = loop.corner;
   const a2 = p.tail ? m[5] : 0;
   const b2 = p.tail ? m[6] : 0;
   w.bx = bx;
   w.by = by;
   w.scallops = look.scallops;
-  w.setTermen(m[1], m[2], a2, b2);
+  w.setTermen(m[1], cn[1], a2, p.tail ? cn[5] : 0);
   scallop(w.fine, m[1], m[2], p.tail ? Math.max(2, Math.round(look.scallops * 0.6)) : look.scallops, look.scallopDepth * L);
   if (p.tail) scallop(w.fine, a2, b2, 2, look.scallopDepth * L);
   w.finish(m[1], m[2], a2, b2, look.fringe * L, rng, 23.7);
+  return ty;
 }

@@ -239,6 +239,26 @@ Proportions come from four real families. Each family is a table of
 - Each corner is rounded by its own radius (`EdgeLoop` in
   `src/polyline.js`).
 
+**Size on the plate.** Each family has a real wingspan range (hawk moths
+55 to 120 mm, silk moths 80 to 150, owlet moths 30 to 75, inchworms 25 to
+60). The specimen fills 70 percent of the box at 25 mm, rising to 100
+percent at 125 mm and above, so small moths look small. Texture density
+follows the smaller box, keeping ink density on the page constant.
+
+**Abdomen length is tied to the hindwing.** The tip sits `abdomenReach` of
+the way from the abdomen's start to the hindwing's anal angle:
+- owlet moths and inchworms about level with it (0.9 to 1.1);
+- silk moths a little short of it (0.8 to 1);
+- hawk moths far past it (2.6 to 4).
+The abdomen is therefore built after the wings.
+
+**Forewing tip.** The costa bows most near the base, and the termen does
+not bow outward just after the apex. So the tip ends in a clean point or
+a smooth curve, never a knob.
+
+**Antennae** are slim tapering outlines, widest at the base, with a gentle
+outward curve, and no longer than about half the forewing.
+
 **The specimen is set the way pinned moths are spread:**
 
 - The forewing's inner margin runs close to perpendicular to the body.
@@ -249,11 +269,15 @@ Proportions come from four real families. Each family is a table of
 - The hindwing base sits level with the forewing base, so the forewing
   covers the hindwing's leading edge all the way to the body.
 
-**Blending (stage 4).** Each moth has a main family and leans towards a
-second one:
+**Blending (stage 4, strengthened after it).** Each moth has a main family
+and leans towards a second one:
 - Every proportion is sampled from both families' ranges and blended.
-- The blend is usually 10 to 20 percent and at most 40 (triangular
-  0 / 0.12 / 0.4).
+- The blend is usually 10 to 30 percent and at most 55 (triangular
+  0 / 0.18 / 0.55).
+- The limit was tested by drawing every ordered pair of families at forced
+  blends. At 0.55 every pair reads as a moth of its main family. At 0.8
+  they still read as moths, but the main family's pattern sits on the
+  other family's shape, so the family stops being recognisable.
 - Things that cannot be blended (antenna type, whether there are tails,
   the pattern) come from the main family.
 - Antenna types: thread, serrate (saw teeth on owlet and inchworm moths),
@@ -264,11 +288,21 @@ second one:
 The target is fishdraw's plate `samples/000016.svg`, where most of the ink
 is texture. `src/pattern.js` builds it from four tools:
 
-- **Tone and a stroke field.** Each family has a tone function, giving
-  darkness from 0 to 1 at a wing-local point. A jittered grid of candidate
-  strokes covers the wing. Each candidate is kept with probability equal to
-  the tone there, and darker places get longer strokes. A stroke is
-  2 points, or 3 when it is long enough to bend.
+- **Tone and rows of scales.** Each family has a tone function, giving
+  darkness from 0 to 1 at a wing-local point. Candidate strokes are laid
+  in rows like scales:
+  - each row runs parallel to the termen (constant `u`), and rows are one
+    cell apart;
+  - positions along a row are one cell apart, offset by half a step on
+    alternate rows;
+  - each stroke points away from the base;
+  - in the outer wing a narrow gap follows each radial vein, so the scales
+    sit between the veins.
+  Each candidate is kept with probability equal to the tone, and darker
+  places get longer strokes. A stroke is 2 points, or 3 when it is long
+  enough to bend. Beyond the ends of the termen, along the costa and inner
+  margin, `u` no longer measures distance to the margin, so margin shading
+  is faded out there.
 - **Cross lines**: smooth, zigzag or toothed, at a fixed `u`.
 - **Veins**: a cell with radial veins to the scallop cusps. Veins start a
   little way from the base, bow slightly, and have small breaks.
@@ -291,8 +325,8 @@ degrees rather than falling into a few fixed variants.
 
 | family | texture | marks, and what varies continuously |
 |---|---|---|
-| Noctuidae | dense radial dashes; cross-hatched where darkest | double cross lines whose shape blends from smooth wave to zigzag to teeth; kidney and ring spots of varying size (the ring can vanish); hindwing ground from pale to dusky, a dark border of varying width and strength, and a second band (*Catocala*) |
-| Geometridae | fine speckle in random directions | crisp thin lines carried across both wings; speckle density, dark median band strength, doubled outer line, subterminal line, discal dot size and margin dots all vary, spanning peppered, banded and clean looks |
+| Noctuidae | dense radial dashes; cross-hatched where darkest | double cross lines whose shape blends from smooth wave to zigzag to teeth; kidney and ring spots of varying size (the ring can vanish); a club-shaped claviform, a silver gamma mark (*Autographa*) or black dagger dashes (*Acronicta*) when their parameters pass a threshold; hindwing shading that darkens towards the margin and fades inward, from pale to dusky, sometimes with a second band edged by fine lines (*Catocala*) |
+| Geometridae | fine speckle in random directions | crisp thin lines carried across both wings; speckle density, dark median band strength, doubled outer line, subterminal line, discal dot size and margin dots all vary, spanning peppered, banded and clean looks; overall melanic darkening, dark shading beyond the outer line, and a dark basal patch |
 | Sphingidae | long streaks along the wing | 0 to 3 dark streaks; a signed oblique band (pale on dark, dark on pale, or none) of varying slope and width; 0 to 3 hindwing bands, hindwing ground and base darkness; an occasional hindwing eyespot (the eyed hawk-moth); strongly banded abdomen |
 | Saturniidae | hatching at an angle that varies per moth, crossed where dark | eyespots vary in number (0 or 1 per forewing, 1 or 2 per hindwing), position, size, shape, ring count (2 to 4) and window (clear, or a solid dark pupil); costal stripe, pale band and dark margin strengths |
 
@@ -341,6 +375,11 @@ with the plate, as an engraving's would.
   names.
 
 ### 3.5 Pen animation plan (stage 5)
+
+Continuous mode never shows the same main family twice in a row. The page
+asks the worker for the next seed and skips any whose main family matches
+the moth just shown. Only the plan stream is sampled to check, which costs
+microseconds, so no full moth is generated and thrown away.
 
 The pen takes a fixed time, about 6 to 8 seconds, whatever the point count:
 
@@ -528,6 +567,10 @@ comfortable, and the bench will report the real number every stage.
     strokes. Because every plate is centred, symmetric and framed alike,
     even random pairs correlate around 0.74. The useful numbers are the
     tail (p99, max) and which families sit there.
+  - `--crop` measures each specimen inside its own bounding box, so size
+    on the plate drops out and only shape and pattern count. At plate
+    level, two small specimens share wide empty margins, which counts as
+    likeness.
 
 ## 9. Risks
 

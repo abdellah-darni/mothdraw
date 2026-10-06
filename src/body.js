@@ -41,14 +41,15 @@ function wobble(shape, row) {
 }
 
 /**
+ * Head and thorax, and the anchors where the wings and antennae attach.
+ * The abdomen comes later (buildAbdomen), once the hindwing is known.
  * @param {Plan['body']} p
  * @param {number} L  forewing length in model units
  * @param {ProfileShape} head
  * @param {ProfileShape} thorax
- * @param {ProfileShape} abdomen
  * @param {BodyAnchors} anchors
  */
-export function buildBody(p, L, head, thorax, abdomen, anchors) {
+export function buildBody(p, L, head, thorax, anchors) {
   const tl = p.thoraxLength * L;
   const tw = p.thoraxWidth * L;
 
@@ -76,12 +77,35 @@ export function buildBody(p, L, head, thorax, abdomen, anchors) {
   wobble(head, 42);
   head.finish();
 
-  // Abdomen: starts under the thorax, swells quickly to its widest point,
-  // then tapers to the tip. The taper exponent sets pointed or blunt.
-  const al = p.abdomenLength * L;
+  anchors.foreX = tw * 0.55;
+  anchors.foreY = tl * 0.28;
+  anchors.hindX = tw * 0.5;
+  // Level with the forewing base, so the forewing covers the hindwing's
+  // leading edge all the way to the body (the thorax hides both roots).
+  anchors.hindY = tl * 0.24;
+  anchors.antX = hr * 0.38;
+  anchors.antY = hy - hr * 0.72;
+}
+
+/**
+ * Abdomen: starts under the thorax, swells quickly to its widest point,
+ * then tapers to the tip. Its length is tied to the hindwing: the tip sits
+ * `abdomenReach` of the way from the abdomen's start to the hindwing's
+ * anal angle (owlet moths about level with it, hawk moths well past it).
+ * The taper exponent sets pointed or blunt.
+ * @param {Plan['body']} p
+ * @param {number} L
+ * @param {ProfileShape} thorax
+ * @param {ProfileShape} abdomen
+ * @param {number} analY  y of the hindwing's anal angle
+ */
+export function buildAbdomen(p, L, thorax, abdomen, analY) {
+  const tl = thorax.dy * (thorax.n - 1);
+  const start = tl * 0.8;
+  const al = Math.max(0.2 * L, (analY - start) * p.abdomenReach);
   const aw = p.abdomenWidth * L;
   const widest = p.abdomenWidest;
-  n = abdomen.reset(tl * 0.8, al, ROW);
+  const n = abdomen.reset(start, al, ROW);
   for (let i = 0; i < n; i++) {
     const t = i / (n - 1);
     let w;
@@ -96,15 +120,6 @@ export function buildBody(p, L, head, thorax, abdomen, anchors) {
   abdomen.w[n - 1] = 0;
   wobble(abdomen, 43);
   abdomen.finish();
-
-  anchors.foreX = tw * 0.55;
-  anchors.foreY = tl * 0.28;
-  anchors.hindX = tw * 0.5;
-  // Level with the forewing base, so the forewing covers the hindwing's
-  // leading edge all the way to the body (the thorax hides both roots).
-  anchors.hindY = tl * 0.24;
-  anchors.antX = hr * 0.38;
-  anchors.antY = hy - hr * 0.72;
 }
 
 /**

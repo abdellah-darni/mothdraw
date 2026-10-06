@@ -48,7 +48,8 @@ import { chance, pick, sampleRanges, triangular } from './rng.js';
  * @property {Range} headRadius
  * @property {Range} thoraxLength
  * @property {Range} thoraxWidth    half-width
- * @property {Range} abdomenLength
+ * @property {Range} abdomenReach   where the abdomen ends, relative to the hindwing's
+ *                                  anal angle (1: level with it, as on owlet moths)
  * @property {Range} abdomenWidth   half-width
  * @property {Range} abdomenWidest  where along the abdomen it is widest (0..1)
  * @property {Range} abdomenTip     taper exponent: low is pointed, high is blunt
@@ -75,6 +76,7 @@ import { chance, pick, sampleRanges, triangular } from './rng.js';
  * @typedef {object} FamilySpec
  * @property {string} name
  * @property {number} weight
+ * @property {Range} wingspan  real wingspan in mm: sets the specimen's size on the plate
  * @property {ForewingSpec} fore
  * @property {HindwingSpec} hind
  * @property {BodySpec} body
@@ -89,6 +91,7 @@ export const FAMILIES = [
     // forewings, small hindwings, heavy spindle-shaped body.
     name: 'Sphingidae',
     weight: 2,
+    wingspan: [55, 90, 120],
     fore: {
       costaAngle: [12, 18, 30],
       dorsumLength: [0.42, 0.52, 0.66],
@@ -118,7 +121,7 @@ export const FAMILIES = [
       headRadius: [0.05, 0.06, 0.07],
       thoraxLength: [0.2, 0.23, 0.26],
       thoraxWidth: [0.08, 0.095, 0.11],
-      abdomenLength: [0.5, 0.68, 0.85],
+      abdomenReach: [2.6, 3.3, 4.0],
       abdomenWidth: [0.06, 0.088, 0.11],
       abdomenWidest: [0.18, 0.25, 0.32],
       abdomenTip: [1.2, 1.5, 1.9],
@@ -139,12 +142,13 @@ export const FAMILIES = [
     // tailed), furry thorax, short stout abdomen, feathery antennae.
     name: 'Saturniidae',
     weight: 2,
+    wingspan: [80, 110, 150],
     fore: {
       costaAngle: [26, 31, 36],
       dorsumLength: [0.72, 0.78, 0.84],
       dorsumAngle: [0, 3, 7],
       costaBow: [0.015, 0.03, 0.05],
-      termenBow1: [-0.02, 0.05, 0.1],
+      termenBow1: [-0.04, 0, 0.04],
       termenBow2: [0.04, 0.08, 0.13],
       dorsumBow: [0.0, 0.02, 0.05],
       apexRound: [0.05, 0.08, 0.12],
@@ -168,7 +172,7 @@ export const FAMILIES = [
       headRadius: [0.045, 0.055, 0.065],
       thoraxLength: [0.17, 0.2, 0.23],
       thoraxWidth: [0.075, 0.09, 0.105],
-      abdomenLength: [0.38, 0.45, 0.52],
+      abdomenReach: [0.78, 0.88, 0.98],
       abdomenWidth: [0.06, 0.075, 0.09],
       abdomenWidest: [0.3, 0.4, 0.5],
       abdomenTip: [2.2, 2.8, 3.5],
@@ -178,7 +182,7 @@ export const FAMILIES = [
       weights: [1],
       length: [0.28, 0.33, 0.38],
       angle: [26, 32, 38],
-      curve: [4, 10, 16],
+      curve: [10, 18, 28],
       width: [0.045, 0.06, 0.075],
     },
     look: { scallops: [6, 7, 8], scallopDepth: [0, 0, 0.0015], fringe: [0.004, 0.006, 0.008] },
@@ -189,12 +193,13 @@ export const FAMILIES = [
     // forewings and widely exposed, slender body.
     name: 'Geometridae',
     weight: 3,
+    wingspan: [25, 40, 60],
     fore: {
-      costaAngle: [22, 27, 32],
-      dorsumLength: [0.68, 0.74, 0.8],
+      costaAngle: [18, 27, 36],
+      dorsumLength: [0.62, 0.74, 0.86],
       dorsumAngle: [-2, 2, 6],
       costaBow: [0.005, 0.015, 0.03],
-      termenBow1: [-0.01, 0.03, 0.06],
+      termenBow1: [-0.08, 0, 0.03],
       termenBow2: [0.0, 0.03, 0.06],
       dorsumBow: [-0.01, 0.01, 0.03],
       apexRound: [0.015, 0.035, 0.06],
@@ -203,9 +208,9 @@ export const FAMILIES = [
     hind: {
       reach: [0.92, 1.0, 1.08],
       tuck: [0.05, 0.08, 0.11],
-      size: [0.58, 0.65, 0.72],
-      analAngle: [64, 72, 80],
-      termenBow: [0.12, 0.18, 0.24],
+      size: [0.5, 0.65, 0.8],
+      analAngle: [58, 72, 84],
+      termenBow: [0.04, 0.18, 0.3],
       innerBow: [0.0, 0.03, 0.06],
       apexRound: [0.04, 0.06, 0.08],
       tornusRound: [0.1, 0.13, 0.16],
@@ -218,7 +223,7 @@ export const FAMILIES = [
       headRadius: [0.035, 0.042, 0.05],
       thoraxLength: [0.14, 0.17, 0.2],
       thoraxWidth: [0.045, 0.055, 0.065],
-      abdomenLength: [0.48, 0.55, 0.62],
+      abdomenReach: [0.9, 1.0, 1.12],
       abdomenWidth: [0.032, 0.04, 0.048],
       abdomenWidest: [0.2, 0.3, 0.4],
       abdomenTip: [1.4, 1.8, 2.4],
@@ -226,12 +231,12 @@ export const FAMILIES = [
     antenna: {
       types: ['thread', 'serrate', 'feather'],
       weights: [3, 1, 1],
-      length: [0.4, 0.48, 0.56],
+      length: [0.34, 0.42, 0.5],
       angle: [22, 29, 36],
-      curve: [4, 12, 20],
+      curve: [10, 18, 28],
       width: [0.03, 0.04, 0.05],
     },
-    look: { scallops: [6, 8, 10], scallopDepth: [0.001, 0.004, 0.009], fringe: [0.007, 0.01, 0.013] },
+    look: { scallops: [6, 8, 10], scallopDepth: [0.001, 0.004, 0.014], fringe: [0.007, 0.01, 0.013] },
   },
   {
     // Owlet moths (Noctua pronuba, Catocala nupta, Agrotis): elongated
@@ -239,12 +244,13 @@ export const FAMILIES = [
     // robust body.
     name: 'Noctuidae',
     weight: 3,
+    wingspan: [30, 45, 75],
     fore: {
       costaAngle: [16, 23, 30],
       dorsumLength: [0.56, 0.66, 0.76],
       dorsumAngle: [2, 6, 10],
       costaBow: [0.008, 0.02, 0.035],
-      termenBow1: [0.0, 0.04, 0.08],
+      termenBow1: [-0.02, 0.01, 0.03],
       termenBow2: [0.02, 0.05, 0.08],
       dorsumBow: [0.0, 0.02, 0.04],
       apexRound: [0.025, 0.045, 0.07],
@@ -268,7 +274,7 @@ export const FAMILIES = [
       headRadius: [0.045, 0.055, 0.065],
       thoraxLength: [0.18, 0.21, 0.24],
       thoraxWidth: [0.07, 0.083, 0.095],
-      abdomenLength: [0.52, 0.6, 0.68],
+      abdomenReach: [0.95, 1.02, 1.1],
       abdomenWidth: [0.055, 0.067, 0.08],
       abdomenWidest: [0.22, 0.3, 0.38],
       abdomenTip: [1.5, 2, 2.6],
@@ -276,9 +282,9 @@ export const FAMILIES = [
     antenna: {
       types: ['thread', 'serrate'],
       weights: [3, 1],
-      length: [0.42, 0.5, 0.58],
+      length: [0.34, 0.42, 0.5],
       angle: [20, 26, 32],
-      curve: [4, 10, 16],
+      curve: [10, 18, 28],
       width: [0.01, 0.01, 0.01],
     },
     look: { scallops: [7, 8, 9], scallopDepth: [0.001, 0.002, 0.004], fringe: [0.008, 0.011, 0.014] },
@@ -289,14 +295,24 @@ export const FAMILIES = [
  * A concrete moth: every range replaced by one number.
  * @typedef {object} Plan
  * @property {string} family   the main family (its pattern and antenna type)
+ * @property {number} wingspan real-world wingspan, mm (blended like a proportion)
  * @property {string} leansTo  the second family its proportions lean towards
- * @property {number} mix      how far, 0 to 0.4
+ * @property {number} mix      how far, 0 to MAX_MIX
  * @property {Record<keyof ForewingSpec, number>} fore
  * @property {Record<Exclude<keyof HindwingSpec, 'tailChance'>, number> & { tail: boolean }} hind
  * @property {Record<keyof BodySpec, number>} body
  * @property {{ type: string, length: number, angle: number, curve: number, width: number }} antenna
  * @property {{ scallops: number, scallopDepth: number, fringe: number }} look
  */
+
+/**
+ * The furthest a moth may lean towards its second family. Tested by
+ * drawing every ordered pair of families at forced blends: at 0.55 every
+ * pair reads as a moth of its main family. At 0.8 they still read as moths,
+ * but the main family's pattern sits on the other family's shape (hawk moth
+ * streaks on silk moth wings), so the family stops being recognisable.
+ */
+export const MAX_MIX = 0.55;
 
 /**
  * Moves every number in `a` the fraction `t` of the way towards `b`.
@@ -312,7 +328,7 @@ function blend(a, b, t) {
 /**
  * Samples one moth. It belongs to one family but leans towards a second:
  * every proportion is sampled from both families' ranges and blended,
- * usually by 10 to 20 percent and at most 40. Things that cannot be
+ * usually by 10 to 30 percent and at most MAX_MIX. Things that cannot be
  * blended (antenna type, whether there are tails, the pattern) come from
  * the main family.
  * @param {Rng} rng
@@ -321,7 +337,7 @@ function blend(a, b, t) {
 export function samplePlan(rng) {
   const f = pick(rng, FAMILIES, FAMILIES.map((x) => x.weight));
   const g = pick(rng, FAMILIES.filter((x) => x !== f));
-  const mix = triangular(rng, 0, 0.12, 0.4);
+  const mix = triangular(rng, 0, 0.18, MAX_MIX);
 
   const fore = /** @type {Plan['fore']} */ (blend(sampleRanges(rng, f.fore), sampleRanges(rng, g.fore), mix));
   const ownHind = sampleRanges(rng, f.hind);
@@ -342,5 +358,6 @@ export function samplePlan(rng) {
   };
   const look = /** @type {Plan['look']} */ (blend(sampleRanges(rng, f.look), sampleRanges(rng, g.look), mix));
   look.scallops = Math.round(look.scallops);
-  return { family: f.name, leansTo: g.name, mix, fore, hind, body, antenna, look };
+  const span = triangular(rng, ...f.wingspan) * (1 - mix) + triangular(rng, ...g.wingspan) * mix;
+  return { family: f.name, leansTo: g.name, mix, wingspan: span, fore, hind, body, antenna, look };
 }

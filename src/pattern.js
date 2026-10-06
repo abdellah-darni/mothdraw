@@ -22,7 +22,7 @@ import { LAYER } from './builder.js';
 import { drawStroke, drawVisible } from './clip.js';
 import { smoothstep } from './geom.js';
 import { fbm2, noise2 } from './noise.js';
-import { Polyline } from './polyline.js';
+import { outlineAround, Polyline } from './polyline.js';
 import { sampleRanges } from './rng.js';
 
 /** @typedef {import('./builder.js').Builder} Builder */
@@ -35,6 +35,8 @@ import { sampleRanges } from './rng.js';
 const uv = new Float64Array(2);
 const xy = new Float64Array(2);
 const line = new Polyline(512);
+const markLine = new Polyline(64);
+const markOutline = new Polyline(160);
 
 /** @param {number} x */
 const bump = (x) => Math.exp(-x * x);
@@ -51,7 +53,7 @@ const mottle = (x, y) => fbm2(x * 0.02, y * 0.02, 2) - 0.45;
 
 /** Owlet moths (Noctua, Catocala, Agrotis). */
 const NOCTUID = {
-  dusk: [0.18, 0.3, 0.42], // ground darkness
+  dusk: [0.1, 0.28, 0.55], // ground darkness
   ante: [0.26, 0.31, 0.36], // antemedial double line
   post: [0.58, 0.64, 0.7], // postmedial double line
   gap: [0.022, 0.035, 0.05], // between the two strands of a double line
@@ -67,8 +69,14 @@ const NOCTUID = {
   renV: [0.42, 0.48, 0.54],
   ren: [0.03, 0.042, 0.055], // kidney spot size
   orb: [0, 0.024, 0.035], // ring spot size (small means absent)
-  len: [4.5, 5.5, 7],
-  jitter: [0.15, 0.22, 0.3],
+  claviform: [0, 0.4, 1], // club-shaped spot below the ring spot (above 0.45)
+  gamma: [0, 0.15, 1], // silver gamma (Y) mark, as on Autographa (above 0.55)
+  gammaU: [0.42, 0.47, 0.52],
+  gammaV: [0.55, 0.62, 0.7],
+  gammaSize: [0.035, 0.045, 0.06],
+  dagger: [0, 0.2, 1], // black dagger dashes, as on Acronicta (above 0.55)
+  len: [3.6, 4.3, 5.2], // a little under the row spacing, so rows show
+  jitter: [0.08, 0.14, 0.2],
   turn: [-0.15, 0, 0.15],
   border: [0.55, 0.65, 0.75], // hindwing dark border: start
   borderWidth: [0.12, 0.2, 0.3],
@@ -95,6 +103,9 @@ const GEOMETRID = {
   dot: [0.006, 0.012, 0.02], // discal dot radius
   dots: [0, 0.6, 1], // dots along the margin
   margin: [0.1, 0.25, 0.45], // darkening towards the margin
+  melanic: [0, 0.08, 0.8], // overall darkening, as in the dark form of the peppered moth
+  outerShade: [0, 0.2, 0.8], // dark shading just outside the outer line
+  basal: [0, 0.15, 0.7], // dark patch at the base
   abdomenBands: [0, 0.05, 0.3],
   abdomenLateral: [0.3, 0.45, 0.6],
 };
@@ -176,6 +187,7 @@ export function samplePattern(rng, family) {
  * @property {number} jitter  random turn of each stroke, radians
  * @property {number} cross   tone above which a crossing stroke is added (> 1: never)
  * @property {number} gap     chance that a stroke is broken by a small gap
+ * @property {number} [uMax]  last row (default 1; beyond 1 reaches into tails)
  */
 
 /**
@@ -190,11 +202,17 @@ export function samplePattern(rng, family) {
  * @property {number} spacing            multiplies every texture cell: set so the
  *                                       ink density on the page is the same for
  *                                       every moth, then by the density option
+ * @property {number} cellEnd            u of the discal cell's outer end, where the
+ *                                       radial veins start (set per wing)
  */
 
 /**
- * Lays a jittered grid of candidate strokes over the wing and keeps each
- * with probability tone(u, v).
+ * Lays candidate strokes in rows, like the rows of scales on a real wing:
+ * each row runs parallel to the termen (constant u), rows are `cell` apart,
+ * positions along a row are `cell` apart and offset by half a step on
+ * alternate rows. In the outer wing a narrow gap is left along each radial
+ * vein, so the scales sit between the veins. Each candidate is kept with
+ * probability tone(u, v).
  * @param {WingContext} c
  * @param {Texture} tex
  * @param {Tone} tone
@@ -203,13 +221,29 @@ function texture(c, tex, tone) {
   const { w, skip, rng } = c;
   const s = w.shape;
   const cell = tex.cell * c.spacing;
-  for (let gy = s.minY; gy < s.maxY; gy += cell) {
-    for (let gx = s.minX; gx < s.maxX; gx += cell) {
-      const x = gx + rng() * cell;
-      const y = gy + rng() * cell;
+  const du = cell / w.radius;
+  const uMax = tex.uMax || 1;
+  const k = w.scallops;
+  let row = 0;
+  for (let u = du * 0.6; u < uMax; u += du, row++) {
+    const n = Math.max(2, Math.round((Math.min(u, 1) * w.termenLength) / cell));
+    const off = row % 2 ? 0.5 : 0;
+    // Run a little past v = 0 and 1 to reach the bowed costa and dorsum.
+    const extra = Math.ceil(n * 0.1) + 1;
+    for (let i = -extra; i <= n + extra; i++) {
+      // Small jitter only, so the rows stay legible as rows.
+      const v = (i + off + (rng() - 0.5) * 0.16) / n;
+      const uu = u + (rng() - 0.5) * 0.12 * du;
+      if (nearVein(c, uu, v, k)) continue;
+      w.toXY(uu, v, xy);
+      const x = xy[0];
+      const y = xy[1];
       if (!s.contains(x, y) || (skip !== null && skip.contains(x, y))) continue;
-      w.toUV(x, y, uv);
-      const t = tone(uv[0], uv[1], x, y);
+      // Beyond the ends of the termen (along the costa and the inner
+      // margin) u no longer measures distance to the outer margin, so
+      // margin shading must not apply there: pull u back towards the base.
+      const outside = v < 0 ? -v : v > 1 ? v - 1 : 0;
+      const t = tone(outside > 0 ? uu * (1 - Math.min(0.45, outside * 3)) : uu, v, x, y);
       if (rng() >= t) continue;
       let a = tex.any ? rng() * Math.PI : Math.atan2(y - w.by, x - w.bx) + tex.turn;
       a += (rng() - 0.5) * 2 * tex.jitter;
@@ -225,6 +259,26 @@ function texture(c, tex, tone) {
       }
     }
   }
+}
+
+/**
+ * True if (u, v) lies within a narrow band along one of the radial veins,
+ * following the same curve veins() draws.
+ * @param {WingContext} c @param {number} u @param {number} v @param {number} k
+ */
+function nearVein(c, u, v, k) {
+  if (k < 2 || u < c.cellEnd) return false;
+  const j0 = Math.round(v * k);
+  for (let j = Math.max(1, j0 - 1); j <= Math.min(k - 1, j0 + 1); j++) {
+    const vj = j / k;
+    const s = Math.max(0, Math.min(1, (vj - 0.12) / 0.76));
+    const u0 = c.cellEnd - 0.05 * s;
+    const v0 = 0.3 + 0.34 * s;
+    const t = (u - u0) / (1.04 - u0);
+    if (t < 0 || t > 1) continue;
+    if (Math.abs(v - (v0 + (vj - v0) * t - 0.03 * Math.sin(Math.PI * t))) < 0.07 / k) return true;
+  }
+  return false;
 }
 
 /**
@@ -316,11 +370,11 @@ function uvLine(c, layer, u0, v0, u1, v1, gap, bend, row) {
  * cell in the middle of the wing, veins along the costa and dorsum, and
  * radial veins from the cell to the termen, each ending at a scallop cusp.
  * @param {WingContext} c
- * @param {number} cellEnd  u of the cell's outer end
  * @param {number} gap      chance of small breaks (scales hide veins on some moths)
  */
-function veins(c, cellEnd, gap) {
+function veins(c, gap) {
   const k = c.w.scallops;
+  const cellEnd = c.cellEnd;
   // Near the base the veins merge into a few trunks under dense scales, so
   // drawn veins start a little way out; every vein has a few small breaks.
   gap = Math.max(gap, 0.06);
@@ -423,12 +477,16 @@ function eyeTone(eyes, x, y) {
 
 /**
  * Owlet moths: dusky, dense scaly texture; double cross lines from smooth
- * to toothed; the kidney (reniform) and ring (orbicular) spots; hindwings
- * pale with a dark border, and in Catocala-like moths a second band.
+ * to toothed; the kidney (reniform) and ring (orbicular) spots, and when
+ * present a club-shaped claviform, a silver gamma mark (Autographa) or
+ * black dagger dashes (Acronicta). Hindwings shade from the margin inward,
+ * from pale (Noctua) to dusky, sometimes crossed by a second band
+ * (Catocala).
  * @param {WingContext} c @param {boolean} fore @param {Look} p
  */
 function noctuid(c, fore, p) {
   const { rng, L } = c;
+  c.cellEnd = fore ? 0.52 : 0.42;
   const ph = rng() * 6.3;
   /** @param {number} v */
   const wav = (v) => p.wave * Math.sin(v * p.waves + ph);
@@ -437,7 +495,17 @@ function noctuid(c, fore, p) {
     const ren = at(c, p.renU, p.renV);
     const orb = at(c, p.renU - 0.19, p.renV - 0.07);
     const renR = p.ren * L;
+    marks.n = 0;
+    if (p.gamma > 0.55) gammaMark(c, p);
+    if (p.dagger > 0.55) daggerMarks(c, p);
+    if (p.claviform > 0.45) {
+      const cl = at(c, p.renU - 0.17, p.renV + 0.12);
+      spot(c, cl.x, cl.y, 0.026 * L * p.claviform, 0.009 * L, cl.a, 0);
+      addMark(cl.x - Math.cos(cl.a) * 0.02 * L, cl.y - Math.sin(cl.a) * 0.02 * L, cl.x + Math.cos(cl.a) * 0.02 * L, cl.y + Math.sin(cl.a) * 0.02 * L, 0.008 * L, 1.2);
+    }
     texture(c, tex, (u, v, x, y) => {
+      const m = markTone(x, y);
+      if (m === m) return m;
       let t = p.dusk + 0.4 * mottle(x, y);
       t += p.bandDark * bump((u - p.ante - p.gap / 2 - wav(v)) / 0.045);
       t += p.bandDark * bump((u - p.post - p.gap / 2 - wav(v)) / 0.05);
@@ -453,20 +521,120 @@ function noctuid(c, fore, p) {
     crossLine(c, p.post, p.wave * 0.5, p.waves, p.sharp, p.teeth, 0.02, 3);
     crossLine(c, p.post + p.gap, p.wave * 0.5, p.waves, p.sharp, p.teeth, 0.02, 4);
     crossLine(c, 0.8, 0.014, 4, 0, 0, 0, 5);
-    if (p.orb > 0.012) spot(c, orb.x, orb.y, p.orb * L, p.orb * 0.85 * L, orb.a, 0);
+    if (p.orb > 0.012 && p.gamma <= 0.55) spot(c, orb.x, orb.y, p.orb * L, p.orb * 0.85 * L, orb.a, 0);
     spot(c, ren.x, ren.y, renR * 0.67, renR, ren.a, 0.35);
-    veins(c, 0.52, 0.35);
+    veins(c, 0.35);
   } else {
-    texture(c, { ...tex, cell: 4.4, cross: 0.9, gap: 0.08 }, (u, v, x, y) => {
-      let t = p.hindGround + 0.1 * mottle(x, y) + p.hindBase * bump(u / 0.22);
-      const b0 = p.border;
-      const b1 = p.border + p.borderWidth;
-      t += p.borderDark * (smoothstep(b0 - 0.05, b0 + 0.03, u) - smoothstep(b1 - 0.04, b1 + 0.03, u));
-      t += p.innerBand * bump((u - (b0 - 0.15) - wav(v)) / 0.055);
+    // Shading darkens towards the outer margin and fades out inward; a
+    // second band, when there is one, crosses the whole wing and is edged
+    // by fine lines, so nothing reads as an isolated patch.
+    const band = p.border - 0.17;
+    texture(c, { ...tex, cell: 4.4, jitter: 0.1, cross: 0.9, gap: 0.08 }, (u, v, x, y) => {
+      let t = p.hindGround + 0.05 * mottle(x, y) + 0.5 * p.hindBase * bump(u / 0.15);
+      t += p.borderDark * Math.pow(smoothstep(p.border - 0.22, Math.min(0.97, p.border + p.borderWidth), u), 1.4);
+      if (p.innerBand > 0.35) t += p.innerBand * (smoothstep(band - 0.045, band - 0.025, u) - smoothstep(band + 0.025, band + 0.045, u));
       return t;
     });
-    veins(c, 0.42, 0.25);
+    if (p.innerBand > 0.35) {
+      crossLine(c, band - 0.04, 0.008, 5, 0.3, 0, 0, 6);
+      crossLine(c, band + 0.04, 0.008, 5, 0.3, 0, 0, 7);
+    }
+    veins(c, 0.25);
   }
+}
+
+// Wing marks (gamma, daggers, claviform): segments with a width and a
+// tone, so the texture can leave the inside pale or fill it dark.
+const marks = { seg: new Float64Array(6 * 48), n: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 };
+
+/**
+ * @param {number} x0 @param {number} y0 @param {number} x1 @param {number} y1
+ * @param {number} width  half-width
+ * @param {number} tone   texture tone inside (-9 keeps it clear)
+ */
+function addMark(x0, y0, x1, y1, width, tone) {
+  if (marks.n === 48) return;
+  if (marks.n === 0) {
+    marks.minX = marks.minY = Infinity;
+    marks.maxX = marks.maxY = -Infinity;
+  }
+  const o = 6 * marks.n++;
+  marks.seg[o] = x0;
+  marks.seg[o + 1] = y0;
+  marks.seg[o + 2] = x1;
+  marks.seg[o + 3] = y1;
+  marks.seg[o + 4] = width;
+  marks.seg[o + 5] = tone;
+  marks.minX = Math.min(marks.minX, x0 - width, x1 - width);
+  marks.maxX = Math.max(marks.maxX, x0 + width, x1 + width);
+  marks.minY = Math.min(marks.minY, y0 - width, y1 - width);
+  marks.maxY = Math.max(marks.maxY, y0 + width, y1 + width);
+}
+
+/**
+ * Texture tone inside a mark, or NaN outside all of them.
+ * @param {number} x @param {number} y
+ */
+function markTone(x, y) {
+  if (marks.n === 0 || x < marks.minX || x > marks.maxX || y < marks.minY || y > marks.maxY) return NaN;
+  const sg = marks.seg;
+  for (let i = 0; i < marks.n; i++) {
+    const o = 6 * i;
+    const ex = sg[o + 2] - sg[o];
+    const ey = sg[o + 3] - sg[o + 1];
+    const l2 = ex * ex + ey * ey || 1;
+    const t = Math.max(0, Math.min(1, ((x - sg[o]) * ex + (y - sg[o + 1]) * ey) / l2));
+    if (Math.hypot(x - sg[o] - t * ex, y - sg[o + 1] - t * ey) < sg[o + 4]) return sg[o + 5];
+  }
+  return NaN;
+}
+
+/**
+ * A mark drawn as an outlined stroke along points given in a local frame
+ * (x along the radial direction, y towards the dorsum), centred on (cx, cy)
+ * and scaled by `size`. Tapers at both ends.
+ * @param {WingContext} c @param {readonly number[]} pts @param {number} cx @param {number} cy
+ * @param {number} a  radial direction @param {number} size @param {number} width @param {number} tone
+ */
+function drawMark(c, pts, cx, cy, a, size, width, tone) {
+  const ca = Math.cos(a);
+  const sa = Math.sin(a);
+  markLine.reset();
+  for (let i = 0; i < pts.length; i += 2) {
+    const lx = pts[i] * size;
+    const ly = pts[i + 1] * size;
+    markLine.push(cx + lx * ca - ly * sa, cy + lx * sa + ly * ca);
+  }
+  const xyl = markLine.xy;
+  for (let i = 1; i < markLine.n; i++) addMark(xyl[2 * i - 2], xyl[2 * i - 1], xyl[2 * i], xyl[2 * i + 1], width * 1.2, tone);
+  outlineAround(markLine, markOutline, (t) => width * (0.35 + 0.65 * Math.sin(Math.PI * Math.min(1, 0.1 + t * 0.85))));
+  drawVisible(c.b, LAYER.PATTERN, true, markOutline.xy, markOutline.n, true, c.w.shape, c.occ);
+}
+
+// The gamma: a Y whose stem curls back, drawn as two strokes.
+const GAMMA_ARM = [-0.9, -0.85, -0.45, -0.35, 0, 0, 0.18, 0.5, 0.05, 0.92, -0.35, 0.95, -0.55, 0.7];
+const GAMMA_ARM2 = [0.75, -0.8, 0.35, -0.3, 0.02, 0.02];
+
+/** @param {WingContext} c @param {Look} p */
+function gammaMark(c, p) {
+  const g = at(c, p.gammaU, p.gammaV);
+  const size = p.gammaSize * c.L * (0.8 + 0.4 * (p.gamma - 0.55) / 0.45);
+  drawMark(c, GAMMA_ARM, g.x, g.y, g.a, size, size * 0.14, -9);
+  drawMark(c, GAMMA_ARM2, g.x, g.y, g.a, size, size * 0.12, -9);
+}
+
+/**
+ * Dagger marks: a black dash from the base along the middle of the wing,
+ * and a dash near the tornus whose outer end forks like a ψ.
+ * @param {WingContext} c @param {Look} p
+ */
+function daggerMarks(c, p) {
+  const s = 0.05 * c.L * (0.8 + 0.4 * (p.dagger - 0.55) / 0.45);
+  const basal = at(c, 0.17, 0.55);
+  drawMark(c, [-1.4, 0, 1.4, 0.05], basal.x, basal.y, basal.a, s, s * 0.09, 1.2);
+  const anal = at(c, 0.74, 0.86);
+  drawMark(c, [-1.3, 0, 0.6, 0.02, 1.2, -0.35], anal.x, anal.y, anal.a, s, s * 0.08, 1.2);
+  drawMark(c, [0.6, 0.02, 1.15, 0.38], anal.x, anal.y, anal.a, s, s * 0.06, 1.2);
 }
 
 /**
@@ -479,14 +647,16 @@ function noctuid(c, fore, p) {
  */
 function geometrid(c, fore, p) {
   const { b, w, occ, rng, L } = c;
+  c.cellEnd = fore ? 0.5 : 0.4;
   const dot = at(c, fore ? 0.47 : 0.36, fore ? 0.42 : 0.45);
   const dotR = p.dot * L;
   const inner = fore ? p.inner : p.inner - 0.1;
   const outer = fore ? p.outer : p.outer - 0.06;
   const bow = fore ? p.bow : p.bow * 0.8;
-  texture(c, { cell: 3.3, len: 2, turn: 0, any: true, jitter: 0, cross: 2, gap: 0 }, (u, v, x, y) => {
-    let t = p.pepper * (0.5 + 1.2 * mottle(x, y)) * (1 - 0.6 * p.band) + 0.08;
-    t += p.margin * smoothstep(0.88, 1, u) + 0.15 * bump(u / 0.18);
+  texture(c, { cell: 3.7, len: 2.2, turn: 0, any: true, jitter: 0, cross: 2, gap: 0 }, (u, v, x, y) => {
+    let t = p.pepper * (0.5 + 1.2 * mottle(x, y)) * (1 - 0.6 * p.band) + 0.08 + p.melanic * 0.7;
+    t += p.margin * smoothstep(0.88, 1, u) + (0.15 + p.basal) * bump(u / (inner * 0.75));
+    t += p.outerShade * smoothstep(outer + 0.01, outer + 0.05, u - bow * Math.sin(Math.PI * Math.max(0, Math.min(1, v)))) * (1 - smoothstep(outer + 0.12, outer + 0.2, u));
     if (Math.hypot(x - dot.x, y - dot.y) < dotR) t += 1;
     return t;
   });
@@ -515,7 +685,7 @@ function geometrid(c, fore, p) {
       drawStroke(b, LAYER.PATTERN, true, xy[0] - Math.cos(a) * l, xy[1] - Math.sin(a) * l, xy[0] + Math.cos(a) * l, xy[1] + Math.sin(a) * l, NaN, NaN, w.shape, occ);
     }
   }
-  veins(c, fore ? 0.5 : 0.4, 0.55);
+  veins(c, 0.55);
 }
 
 /**
@@ -528,6 +698,7 @@ function geometrid(c, fore, p) {
  * @param {WingContext} c @param {boolean} fore @param {Look} p
  */
 function sphingid(c, fore, p) {
+  c.cellEnd = fore ? 0.5 : 0.4;
   if (fore) {
     const n = Math.floor(p.streaks);
     const ob = p.oblique;
@@ -552,7 +723,7 @@ function sphingid(c, fore, p) {
       }
     }
     for (let k = 0; k < Math.floor(p.basal); k++) crossLine(c, 0.2 + 0.08 * k, 0.012, 3, 0, 0, 0, 22 + k);
-    veins(c, 0.5, 0.15);
+    veins(c, 0.15);
     return;
   }
   const n = Math.floor(p.hindBands);
@@ -571,7 +742,7 @@ function sphingid(c, fore, p) {
     for (let k = 0; k < n; k++) t += 0.8 * bump((u - (p.hindBandAt + (0.32 * k) / Math.max(1, n - 0.5))) / p.hindBandW);
     return t;
   });
-  veins(c, 0.4, 0.3);
+  veins(c, 0.3);
 }
 
 /**
@@ -584,6 +755,7 @@ function sphingid(c, fore, p) {
  */
 function saturniid(c, fore, tailed, p) {
   const { L } = c;
+  c.cellEnd = fore ? 0.5 : 0.42;
   /** @type {Eye[]} */
   const eyes = [];
   const count = Math.floor(fore ? p.foreEyes : p.hindEyes);
@@ -595,7 +767,7 @@ function saturniid(c, fore, tailed, p) {
     eyes.push({ x: e.x, y: e.y, a: e.a, rx: r * p.elong, ry: r, rings: Math.floor(p.rings), window: p.window });
   }
   for (const e of eyes) drawEye(c, e);
-  texture(c, { cell: 4.3, len: p.len, turn: p.turn, any: false, jitter: 0.1, cross: p.cross, gap: 0.08 }, (u, v, x, y) => {
+  texture(c, { cell: 4.3, len: p.len, turn: p.turn, any: false, jitter: 0.1, cross: p.cross, gap: 0.08, uMax: tailed && !fore ? 2.4 : 1 }, (u, v, x, y) => {
     const eye = eyeTone(eyes, x, y);
     if (eye === eye) return eye;
     let t = p.ground + 0.25 * mottle(x, y);
@@ -613,7 +785,7 @@ function saturniid(c, fore, tailed, p) {
     crossLine(c, p.post + 0.06, 0.012, 2, 0, 0, 0, 33);
     crossLine(c, 0.88, 0.01, 7, 0, 0, 0, 34);
   }
-  veins(c, fore ? 0.5 : 0.42, 0.05);
+  veins(c, 0.05);
 }
 
 /**
