@@ -87,6 +87,17 @@ export function generate(seed, options = {}) {
 }
 
 /**
+ * The main family a seed will produce, without generating the moth: only
+ * the body plan is sampled, which takes microseconds. Continuous mode uses
+ * it to avoid showing the same family twice in a row.
+ * @param {string | number} seed
+ * @returns {string}
+ */
+export function peekFamily(seed) {
+  return samplePlan(stream(hashSeed(seed), 'plan')).family;
+}
+
+/**
  * Draws the frame and the moth into the builder. A fresh detail stream
  * each time, so a redraw is as deterministic as the first.
  * @param {import('./plans.js').Plan} plan

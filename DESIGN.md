@@ -374,26 +374,95 @@ with the plate, as an engraving's would.
 - The data costs a few hundred bytes. 5,000 seeds gave 5,000 distinct
   names.
 
-### 3.5 Pen animation plan (stage 5)
+### 3.5 Continuous mode (stage 5)
 
-Continuous mode never shows the same main family twice in a row. The page
-asks the worker for the next seed and skips any whose main family matches
-the moth just shown. Only the plan stream is sampled to check, which costs
-microseconds, so no full moth is generated and thrown away.
+`mount(element, options)` returns `{ next, destroy }` (`src/mount.js`).
 
-The pen takes a fixed time, about 6 to 8 seconds, whatever the point count:
+**Worker or main thread: decided by measurement.** `generate` was timed
+in headless Chrome (`node tools/perf-generate.js`, fresh browser per run,
+10 calls each):
 
-- When a moth arrives, compute the cumulative ink length per polyline once
-  (one pass, about 0.1 ms for 15,000 points), in the worker or on arrival.
-- Pen speed = total length / duration. Each frame advances the pen by
-  speed × elapsed time and strokes only the new part, from the previous pen
-  position to the new one. The canvas keeps what was already drawn, so a
-  frame costs only its own few hundred points.
-- Polylines play in drawing order (layers: frame, body, wing outlines,
-  veins, patterns, texture, fringe, antennae). Each mirrored line is
-  followed by its mirror image, so the specimen grows symmetrically.
-- When the pen finishes, the name fades in. Then the plate holds, using a
-  timer, not animation frames.
+| CPU | where | first call | later calls | longest main-thread task |
+|---|---|---|---|---|
+| 1x | main thread, in idle callbacks | 15.6 ms | 4.1 ms | 16.2 ms |
+| 1x | worker | 10.7 ms | 3.3 ms | 1.9 ms |
+| 6x | main thread, in idle callbacks | 66.5 ms | 16.3 ms | **69.1 ms** (over 50) |
+| 6x | worker | 12.7 ms* | 2.8 ms* | 12.2 ms |
+
+\* Chrome's CPU throttling slows only the page's main thread, not workers.
+
+At 6x the main-thread first call is a 69 ms task, so the worker stays.
+
+**Payload.** `"sideEffects": false` lets bundlers drop the generator from
+the page's code, so the page loads only the drawing code (2.1 KB Brotli)
+and the worker carries the generator (14.3 KB). The worker is created with
+`new Worker(new URL('./worker.js', import.meta.url), { type: 'module' })`,
+the form Vite and esbuild both understand. The prebuilt `dist/` puts
+`worker.js` beside `mothdraw.js`. Vite's dev-time dependency pre-bundling
+breaks that URL, so dev setups exclude the package from `optimizeDeps`
+(README); production builds need nothing. Both were verified with a real
+Vite 6 project.
+
+**Choosing the next moth.** The worker picks seeds (random, or a fixed
+sequence `seed, seed-1, seed-2...`) and rejects any whose main family
+matches the moth on screen. `peekFamily` samples only the body plan, so a
+rejected seed costs microseconds. The next moth is generated while the
+current one is drawn, and the previous moth's arrays are transferred back
+for reuse (§5.1).
+
+**The pen.** The worker also sends the total ink length. Each frame
+advances the pen to `total × elapsed / drawTime` and strokes only the new
+stretch, so drawing takes the same time whatever the point count:
+- The canvas keeps what is already drawn.
+- Polylines play in drawing order, each mirrored line followed by its
+  mirror image.
+- Pen state lives in plain integers and a `Float64Array`. A fractional
+  number written to a closure variable can make V8 box it every frame; a
+  typed-array write never does.
+- `requestAnimationFrame` always gets the same function.
+
+**The name** is a DOM caption placed at the drawing's label position. It
+fades in with a CSS transition, so the fade costs no animation frames, and
+it inherits the page's font and colour. The canvas gets
+`role="img"` and an `aria-label` with the name.
+
+**Hold, pause, theme, resize, reduced motion:**
+- The hold is a timer, so it requests no animation frames.
+- `visibilitychange` cancels the frame or timer and records the time.
+  Returning shifts the start time forward and carries on, so nothing is
+  requested while hidden.
+- A theme change (system setting, or a class, style or `data-theme`
+  attribute on `<html>` or `<body>`) and any resize redraw the current moth
+  up to the pen's position, without regenerating it.
+- The canvas uses device pixels, capped at 2x.
+- Under `prefers-reduced-motion` the moth is drawn whole with no
+  animation and no cycling, and a click still gives the next one.
+- `destroy()` cancels everything, terminates the worker, removes every
+  listener and observer, and sets the canvas to 0 × 0 before removing it.
+
+**Measured** (`node tools/perf-mount.js`, headless Chrome):
+
+| check | result |
+|---|---|
+| longest main-thread task over a full cycle (7 s draw, 0.8 s fade, 6 s hold, next) | 4.1 ms at 1x, 24.8 ms at 6x; no task over 50 ms |
+| animation frames requested while holding | 0 (at 1x and 6x) |
+| animation frames requested while the tab is hidden | 0 (tab really hidden by switching tabs); resumes where it stopped |
+| allocations inside the draw loop (sampling heap profiler, 16-byte interval, 4 s each) | first moth 532 bytes, second moth 0 to 28 bytes |
+| heap over 1,000 moths | page 719 → 748 KB; worker 1,005 → 1,180 KB, flat from 700 to 1,000 |
+| main family repeated | 0 times in 1,000 moths |
+| reduced motion | 1 moth, 0 frames, name shown, click gives the next |
+| destroy | 0 frames afterwards; canvas removed; worker terminated |
+
+The draw loop itself allocates no objects or arrays. The first moth's 532
+bytes are V8 boxing intermediate numbers before `frame()` is optimised;
+from the second moth on, the sampler finds at most one or two 16-byte
+samples per 240 frames.
+
+**Open item.** In about 6 of 70 fresh headless launches, the first moth
+took about 6 s instead of about 80 ms. It is always a single, near-constant
+delay, and every later moth on the page is on time. It was seen with the
+dev server and with Vite's production build, and never in 40 instrumented
+launches. To check in stage 6, in a normal browser.
 
 ## 4. Seeds and randomness
 
@@ -497,11 +566,15 @@ src/
   generate.js       generate(seed, options)
   render-canvas.js  draws a Drawing (full, or progressively up to a length)
   render-svg.js     Drawing -> SVG string with one <path>
-  mount.js  worker.js   continuous mode (stage 5)
+  mount.js          continuous mode: drawing, timing, pause, theme, destroy
+  worker.js         continuous mode: picks seeds and generates off the main thread
   index.js          public exports
 bench/bench.js       npm run bench
 tools/contact-sheet.js  seeds -> PNG via headless Chrome (--count, --cols, --cell)
 tools/similar.js     ranks pairs of plates by how alike they look
+tools/cdp.js         minimal Chrome DevTools Protocol client (no dependencies)
+tools/perf-generate.js, tools/perf-mount.js  npm run perf
+demo/continuous.html continuous mode
 demo/index.html      one moth from ?seed=
 ```
 
@@ -550,10 +623,17 @@ comfortable, and the bench will report the real number every stage.
 - **Memory**: the bench runs with `--expose-gc` and records `heapUsed` after
   a forced garbage collection every 100 generations. Flat means no upward
   trend from start to end.
-- **Animation** (stage 5): headless Chrome driven over the DevTools protocol
-  using Node's built-in `WebSocket`. A Long Tasks observer catches anything
-  over 50 ms. A wrapped `requestAnimationFrame` counts frames during the hold
-  and while the tab is hidden. Allocation sampling checks the draw loop.
+- **Animation** (stage 5, `npm run perf`): headless Chrome driven over the
+  DevTools protocol using Node's built-in `WebSocket`:
+  - main-thread tasks from a trace;
+  - animation frames counted by a wrapped `requestAnimationFrame`, switched
+    off for the allocation test so the wrapper does not allocate inside
+    the loop;
+  - allocations from V8's sampling heap profiler, credited to `frame` and
+    `advance`;
+  - heap from `Runtime.getHeapUsage` on the page and the worker (attached
+    as a session) after forced collection;
+  - hiding by switching to another tab.
   No extra dependency is needed.
 - **Visual check** (stage 2 onwards): a contact sheet of 24 seeds rendered
   through the real SVG renderer and saved as PNG by headless Chrome.

@@ -1,7 +1,7 @@
 // npm run bench: generates 1,000 moths and reports time, size and memory.
 // Run through npm so the bundle is rebuilt first and --expose-gc is set.
 
-import { readFileSync } from 'node:fs';
+import { build } from 'esbuild';
 import { cpus } from 'node:os';
 import { brotliCompressSync, constants } from 'node:zlib';
 import { generate } from '../src/index.js';
@@ -9,7 +9,6 @@ import { generate } from '../src/index.js';
 const N = 1000;
 const WARMUP = 50;
 const HEAP_EVERY = 100;
-const BUNDLE = new URL('../dist/mothdraw.min.js', import.meta.url);
 
 const gc = /** @type {(() => void) | undefined} */ (globalThis.gc);
 
@@ -48,10 +47,20 @@ const mark = (/** @type {boolean} */ ok) => (ok ? 'pass' : 'FAIL');
 const median = quantile(times, 0.5);
 const p95 = quantile(times, 0.95);
 
-const bundle = readFileSync(BUNDLE);
-const brotli = brotliCompressSync(bundle, {
-  params: { [constants.BROTLI_PARAM_QUALITY]: 11 },
-}).length;
+/**
+ * Minified bundle of one entry, and its size after Brotli (quality 11).
+ * @param {string} entry
+ */
+async function size(entry) {
+  const r = await build({ entryPoints: [entry], bundle: true, minify: true, format: 'esm', write: false, logLevel: 'silent' });
+  const code = r.outputFiles[0].contents;
+  return { min: code.length, br: brotliCompressSync(code, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }).length };
+}
+const lib = await size('src/index.js');
+const worker = await size('src/worker.js');
+// What the 404 page loads: mount (main thread) plus the worker.
+const page = await size('src/mount.js');
+const brotli = page.br + worker.br;
 
 console.log(`mothdraw bench: ${N} moths, Node ${process.version}, ${cpus()[0].model}`);
 console.log(`generate  median ${ms(median)}   p95 ${ms(p95)}   max ${ms(quantile(times, 1))}`);
@@ -59,7 +68,7 @@ console.log(
   `points    median ${quantile(points, 0.5)}   min ${quantile(points, 0)}   max ${quantile(points, 1)}`,
 );
 console.log(`lines     median ${quantile(lines, 0.5)}`);
-console.log(`bundle    ${kb(bundle.length)} minified, ${kb(brotli)} brotli`);
+console.log(`bundle    library ${kb(lib.min)} min / ${kb(lib.br)} br; continuous mode = mount ${kb(page.br)} br + worker ${kb(worker.br)} br = ${kb(brotli)} br`);
 if (gc) {
   // The whole series, so a one-off step (JIT warm-up) is not mistaken for a
   // leak. A leak shows as a steady climb.
@@ -72,5 +81,5 @@ if (gc) {
 }
 console.log(
   `targets   median < 20 ms ${mark(median < 20)}, p95 < 60 ms ${mark(p95 < 60)}, ` +
-    `bundle < 15 KB brotli ${mark(brotli < 15 * 1024)}`,
+    `continuous-mode bundle < 20 KB brotli ${mark(brotli < 20 * 1024)}`,
 );

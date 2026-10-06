@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>mount measurement</title>
+<style>
+  :root { color: #1d1b18; background: #f6f3ec; font-family: Georgia, serif; }
+  :root[data-theme='dark'] { color: #e9e5dc; background: #161513; }
+  body { margin: 0; }
+</style>
+<script>
+  // Count every animation frame request, with its time.
+  // When the worker is created and when its first message arrives, for
+  // diagnosing slow first moths.
+  window.__workerTimes = {};
+  const Worker0 = window.Worker;
+  window.Worker = function (url, opts) {
+    window.__workerTimes.created = performance.now();
+    const w = new Worker0(url, opts);
+    w.addEventListener('message', () => { window.__workerTimes.firstMessage ??= performance.now(); });
+    return w;
+  };
+  // ?count=0 leaves requestAnimationFrame untouched (for allocation tests).
+  window.__rafTimes = [];
+  if (new URLSearchParams(location.search).get('count') !== '0') {
+    const raf0 = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (cb) => { window.__rafTimes.push(performance.now()); return raf0(cb); };
+  }
+</script>
+<div id="plate" style="width:900px;height:675px"></div>
+<script type="module">
+  import { mount } from '../../src/index.js';
+  const q = new URLSearchParams(location.search);
+  // Keep only what the measurements need, so the page itself does not grow:
+  // a count, the first three moths, and how often a family repeated.
+  window.__moths = [];
+  window.__count = 0;
+  window.__repeats = 0;
+  let prev = null;
+  window.__api = mount(document.getElementById('plate'), {
+    drawSeconds: Number(q.get('draw') ?? 7),
+    holdSeconds: Number(q.get('hold') ?? 6),
+    fadeSeconds: Number(q.get('fade') ?? 0.8),
+    seed: q.get('seed') || undefined,
+    onMoth: (m) => {
+      window.__count++;
+      if (prev === m.family) window.__repeats++;
+      prev = m.family;
+      if (window.__moths.length < 3) window.__moths.push({ t: performance.now(), ...m });
+    },
+  });
+</script>

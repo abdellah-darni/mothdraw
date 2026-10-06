@@ -47,3 +47,8 @@ test('blending keeps every proportion within the two families\' ranges', async (
     }
   }
 });
+
+test('peekFamily predicts the family without generating', async () => {
+  const { peekFamily } = await import('../src/generate.js');
+  for (let s = 0; s < 500; s++) assert.equal(peekFamily(s), generate(s).family);
+});

@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>generate timing</title>
+<script type="module">
+// ?mode=main  : generate on the main thread, each call in requestIdleCallback
+// ?mode=worker: generate in a module worker
+import { generate } from '../../dist/mothdraw.js';
+const params = new URLSearchParams(location.search);
+const mode = params.get('mode');
+const n = Number(params.get('n')) || 10;
+const longTasks = [];
+new PerformanceObserver((list) => longTasks.push(...list.getEntries().map((e) => e.duration))).observe({ type: 'longtask', buffered: true });
+const times = [];
+if (mode === 'main') {
+  for (let i = 0; i < n; i++) {
+    await new Promise((r) => requestIdleCallback(r, { timeout: 1000 }));
+    const t0 = performance.now();
+    generate('perf' + i);
+    times.push(performance.now() - t0);
+  }
+} else {
+  const w = new Worker(new URL('./gen-worker.js', import.meta.url), { type: 'module' });
+  for (let i = 0; i < n; i++) {
+    times.push(await new Promise((r) => { w.onmessage = (e) => r(e.data); w.postMessage('perf' + i); }));
+  }
+}
+await new Promise((r) => setTimeout(r, 300));
+window.__result = { times, longTasks };
+</script>
