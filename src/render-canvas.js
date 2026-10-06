@@ -52,3 +52,21 @@ export function drawDrawing(ctx, drawing, fit, fromLine = 0, toLine = drawing.of
   }
   ctx.stroke();
 }
+
+/**
+ * Draws the species name in italics at the drawing's label position, in
+ * the given font family (pass the page's, e.g. getComputedStyle(el).fontFamily),
+ * filled with the context's current fillStyle.
+ * @param {CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D} ctx
+ * @param {Drawing} drawing
+ * @param {Fit} fit
+ * @param {string} text
+ * @param {string} fontFamily
+ */
+export function drawLabel(ctx, drawing, fit, text, fontFamily) {
+  const { x, y, size } = drawing.label;
+  ctx.font = `italic ${size * fit.scale}px ${fontFamily}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(text, x * fit.scale + fit.x, y * fit.scale + fit.y);
+}

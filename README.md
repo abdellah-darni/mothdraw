@@ -3,23 +3,26 @@
 A procedural moth drawing generator. A seed goes in; a line drawing of a
 pinned moth specimen comes out, different for every seed.
 
-> Work in progress. Stage 2 of 6: moth outlines (body, wings, antennae)
-> from four real family body plans, with hidden-line removal. Wing detail,
-> shading and names come next.
+> Work in progress. Stage 3 of 6: full plates with wing patterns, texture,
+> veins, body detail, a frame and a label. Names, blending between body
+> plans and the animated mode come next.
 
 ## Use
 
 ```js
-import { generate, toSVG, drawDrawing, fitDrawing } from 'mothdraw';
+import { generate, toSVG, drawDrawing, drawLabel, fitDrawing } from 'mothdraw';
 
 const { drawing, name } = generate('luna');
 
-// Static file
-const svg = toSVG(drawing, { title: name });
+// Static file, with the name drawn as italic text under the specimen
+const svg = toSVG(drawing, { title: name, label: name });
 
 // Canvas: you own the canvas, its size and stroke style
-ctx.strokeStyle = getComputedStyle(canvas).color;
-drawDrawing(ctx, drawing, fitDrawing(drawing, canvas.width, canvas.height));
+const style = getComputedStyle(canvas);
+ctx.strokeStyle = ctx.fillStyle = style.color;
+const fit = fitDrawing(drawing, canvas.width, canvas.height);
+drawDrawing(ctx, drawing, fit);
+drawLabel(ctx, drawing, fit, name, style.fontFamily);
 ```
 
 `generate` is a pure function with no DOM access, so it runs in Node or in

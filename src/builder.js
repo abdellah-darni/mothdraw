@@ -16,6 +16,25 @@ import { fitBox } from './geom.js';
  *   vertices offsets[i] .. offsets[i+1] - 1
  * @property {number} width   frame width in drawing units
  * @property {number} height  frame height in drawing units
+ * @property {Label} label    where renderers place the species name
+ */
+
+/**
+ * The name is text, not lines: each renderer draws it in italics with the
+ * page's font, centred on x with its baseline at y.
+ * @typedef {object} Label
+ * @property {number} x
+ * @property {number} y     baseline
+ * @property {number} size  font size in drawing units
+ */
+
+/**
+ * The rectangle the specimen is scaled to fit, in frame units.
+ * @typedef {object} Box
+ * @property {number} left
+ * @property {number} top
+ * @property {number} right
+ * @property {number} bottom
  */
 
 /**
@@ -29,17 +48,22 @@ import { fitBox } from './geom.js';
  * Layers, in drawing order. The pen animation draws layer 0 first.
  */
 export const LAYER = Object.freeze({
-  BODY: 0,
-  WING: 1,
-  VEIN: 2,
-  PATTERN: 3,
-  SHADE: 4,
-  FRINGE: 5,
-  ANTENNA: 6,
+  FRAME: 0,
+  BODY: 1,
+  WING: 2,
+  VEIN: 3,
+  PATTERN: 4,
+  SHADE: 5,
+  FRINGE: 6,
+  ANTENNA: 7,
 });
-const LAYER_COUNT = 7;
-/** Flag bit stored next to the layer number: add a mirror image at pack. */
+const LAYER_COUNT = 8;
+// Flag bits stored next to the layer number.
+/** Add a mirror image across x = 0 when packing. */
 const MIRROR = 0x80;
+/** Already in frame units: not scaled, not mirrored, not in the bounding box. */
+const ABSOLUTE = 0x40;
+const LAYER_MASK = 0x3f;
 
 export class Builder {
   /**
@@ -71,12 +95,13 @@ export class Builder {
    * Starts a new polyline, closing any open one.
    * @param {number} layer one of LAYER
    * @param {boolean} [mirror] add a mirror image across x = 0 when packing
+   * @param {boolean} [absolute] points are frame coordinates (the frame itself)
    */
-  begin(layer, mirror = true) {
+  begin(layer, mirror = true, absolute = false) {
     if (this.open) this.end();
     if (this.lineCount === this.flags.length) this.growLines();
     this.starts[this.lineCount] = this.vertexCount;
-    this.flags[this.lineCount] = layer | (mirror ? MIRROR : 0);
+    this.flags[this.lineCount] = layer | (absolute ? ABSOLUTE : mirror ? MIRROR : 0);
     this.open = true;
   }
 
@@ -107,19 +132,20 @@ export class Builder {
 
   /**
    * Produces the Drawing: mirror images added, lines in layer order (each
-   * mirrored line immediately followed by its mirror image), everything
-   * scaled to fit `width` × `height` with `pad` on each side.
+   * mirrored line immediately followed by its mirror image), and the
+   * specimen scaled to fit `box`. Absolute lines are copied unchanged.
    *
    * Output arrays are new and exactly sized, unless `reuse` offers buffers
    * that are still attached and big enough; then the result is
    * exact-length views over those buffers.
-   * @param {number} width
+   * @param {number} width   frame size
    * @param {number} height
-   * @param {number} pad
+   * @param {Box} box        where the specimen goes
+   * @param {Label} label
    * @param {Reuse} [reuse]
    * @returns {Drawing}
    */
-  pack(width, height, pad, reuse) {
+  pack(width, height, box, label, reuse) {
     if (this.open) this.end();
     const pts = this.pts;
     const starts = this.starts;
@@ -140,6 +166,7 @@ export class Builder {
       const copies = mirrored ? 2 : 1;
       outVertices += (b - a) * copies;
       outLines += copies;
+      if (flags[l] & ABSOLUTE) continue;
       for (let v = a; v < b; v++) {
         const x = pts[2 * v];
         const y = pts[2 * v + 1];
@@ -154,7 +181,7 @@ export class Builder {
       }
     }
     if (n === 0) minX = minY = maxX = maxY = 0;
-    const { scale, x: ox, y: oy } = fitBox(minX, minY, maxX, maxY, width, height, pad, this.fit);
+    const { scale, x: ox, y: oy } = fitBox(minX, minY, maxX, maxY, box.left, box.top, box.right, box.bottom, this.fit);
 
     const points = floatOutput(reuse && reuse.points, outVertices * 2);
     const offsets = uintOutput(reuse && reuse.offsets, outLines + 1);
@@ -165,10 +192,17 @@ export class Builder {
     for (let layer = 0; layer < LAYER_COUNT; layer++) {
       for (let l = 0; l < n; l++) {
         const f = flags[l];
-        if ((f & ~MIRROR) !== layer) continue;
+        if ((f & LAYER_MASK) !== layer) continue;
         const a = starts[l];
         const b = starts[l + 1];
         offsets[line++] = w >> 1;
+        if (f & ABSOLUTE) {
+          for (let v = a; v < b; v++) {
+            points[w++] = pts[2 * v];
+            points[w++] = pts[2 * v + 1];
+          }
+          continue;
+        }
         for (let v = a; v < b; v++) {
           points[w++] = pts[2 * v] * scale + ox;
           points[w++] = pts[2 * v + 1] * scale + oy;
@@ -183,7 +217,7 @@ export class Builder {
       }
     }
     offsets[line] = w >> 1;
-    return { points, offsets, width, height };
+    return { points, offsets, width, height, label };
   }
 
   /** @private */

@@ -65,6 +65,13 @@ import { chance, pick, triangular } from './rng.js';
  */
 
 /**
+ * @typedef {object} LookSpec
+ * @property {Range} scallops     scallops along the termen; veins end at the cusps
+ * @property {Range} scallopDepth
+ * @property {Range} fringe       length of the fringe hairs on the margin
+ */
+
+/**
  * @typedef {object} FamilySpec
  * @property {string} name
  * @property {number} weight
@@ -72,6 +79,7 @@ import { chance, pick, triangular } from './rng.js';
  * @property {HindwingSpec} hind
  * @property {BodySpec} body
  * @property {AntennaSpec} antenna
+ * @property {LookSpec} look
  */
 
 /** @type {readonly FamilySpec[]} */
@@ -123,6 +131,7 @@ export const FAMILIES = [
       curve: [4, 10, 16],
       width: [0.01, 0.013, 0.016],
     },
+    look: { scallops: [6, 7, 9], scallopDepth: [0.001, 0.003, 0.005], fringe: [0.006, 0.008, 0.011] },
   },
   {
     // Giant silk moths (Antheraea polyphemus, Actias luna, Saturnia
@@ -172,6 +181,7 @@ export const FAMILIES = [
       curve: [4, 10, 16],
       width: [0.045, 0.06, 0.075],
     },
+    look: { scallops: [6, 7, 8], scallopDepth: [0, 0, 0.0015], fringe: [0.004, 0.006, 0.008] },
   },
   {
     // Inchworm moths (Biston betularia, Ourapteryx sambucaria, Geometra
@@ -221,6 +231,7 @@ export const FAMILIES = [
       curve: [4, 12, 20],
       width: [0.03, 0.04, 0.05],
     },
+    look: { scallops: [6, 8, 10], scallopDepth: [0.001, 0.004, 0.009], fringe: [0.007, 0.01, 0.013] },
   },
   {
     // Owlet moths (Noctua pronuba, Catocala nupta, Agrotis): elongated
@@ -270,6 +281,7 @@ export const FAMILIES = [
       curve: [4, 10, 16],
       width: [0.01, 0.01, 0.01],
     },
+    look: { scallops: [7, 8, 9], scallopDepth: [0.001, 0.002, 0.004], fringe: [0.008, 0.011, 0.014] },
   },
 ];
 
@@ -281,6 +293,7 @@ export const FAMILIES = [
  * @property {Record<Exclude<keyof HindwingSpec, 'tailChance'>, number> & { tail: boolean }} hind
  * @property {Record<keyof BodySpec, number>} body
  * @property {{ type: string, length: number, angle: number, curve: number, width: number }} antenna
+ * @property {{ scallops: number, scallopDepth: number, fringe: number }} look
  */
 
 /**
@@ -317,5 +330,7 @@ export function samplePlan(rng) {
     curve: a.curve,
     width: a.width,
   };
-  return { family: f.name, fore, hind, body, antenna };
+  const look = /** @type {Plan['look']} */ (sampleRanges(rng, f.look));
+  look.scallops = Math.round(look.scallops);
+  return { family: f.name, fore, hind, body, antenna, look };
 }

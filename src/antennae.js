@@ -63,7 +63,7 @@ export function drawAntenna(b, p, L, x0, y0, maxAngle, spine, outline, occ) {
   const n = spine.n;
 
   if (p.type === 'thread') {
-    drawVisible(b, LAYER.ANTENNA, true, xy, n, false, occ);
+    drawVisible(b, LAYER.ANTENNA, true, xy, n, false, null, occ);
     return;
   }
 
@@ -87,13 +87,13 @@ export function drawAntenna(b, p, L, x0, y0, maxAngle, spine, outline, occ) {
         outline.push(xy[2 * i] - (ty / tl) * w * side, xy[2 * i + 1] + (tx / tl) * w * side);
       }
     }
-    drawVisible(b, LAYER.ANTENNA, true, outline.xy, outline.n, true, occ);
+    drawVisible(b, LAYER.ANTENNA, true, outline.xy, outline.n, true, null, occ);
     return;
   }
 
   // Feather: the shaft plus paired branches angled towards the tip,
   // longest a little before the middle, giving a leaf-shaped outline.
-  drawVisible(b, LAYER.ANTENNA, true, xy, n, false, occ);
+  drawVisible(b, LAYER.ANTENNA, true, xy, n, false, null, occ);
   const wMax = p.width * L;
   // One pair every other shaft segment: denser reads as a solid blob.
   for (let i = 3; i < n - 1; i += 2) {

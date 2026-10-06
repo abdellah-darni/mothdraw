@@ -49,24 +49,19 @@ export function lineLength(points, offsets, line) {
 }
 
 /**
- * Uniform scale and offset that fit the box [minX, maxX] × [minY, maxY]
- * centred inside a `width` × `height` frame with `pad` on every side.
+ * Uniform scale and offset that fit the box [minX, maxX] × [minY, maxY],
+ * centred, inside the target rectangle [left, right] × [top, bottom].
  * Writes into `out` so callers can reuse one object.
- * @param {number} minX
- * @param {number} minY
- * @param {number} maxX
- * @param {number} maxY
- * @param {number} width
- * @param {number} height
- * @param {number} pad
+ * @param {number} minX @param {number} minY @param {number} maxX @param {number} maxY
+ * @param {number} left @param {number} top @param {number} right @param {number} bottom
  * @param {{ scale: number, x: number, y: number }} out
  */
-export function fitBox(minX, minY, maxX, maxY, width, height, pad, out) {
+export function fitBox(minX, minY, maxX, maxY, left, top, right, bottom, out) {
   const bw = Math.max(maxX - minX, 1e-6);
   const bh = Math.max(maxY - minY, 1e-6);
-  const scale = Math.min((width - 2 * pad) / bw, (height - 2 * pad) / bh);
+  const scale = Math.min((right - left) / bw, (bottom - top) / bh);
   out.scale = scale;
-  out.x = (width - bw * scale) / 2 - minX * scale;
-  out.y = (height - bh * scale) / 2 - minY * scale;
+  out.x = (left + right - bw * scale) / 2 - minX * scale;
+  out.y = (top + bottom - bh * scale) / 2 - minY * scale;
   return out;
 }

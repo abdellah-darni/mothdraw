@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { Builder, LAYER } from '../src/builder.js';
 import { drawVisible } from '../src/clip.js';
 import { generate } from '../src/index.js';
-import { lastForewing } from '../src/moth.js';
+import { lastWings } from '../src/moth.js';
 import { createRng } from '../src/rng.js';
 import { ProfileShape } from '../src/shapes.js';
 
@@ -33,7 +33,7 @@ function worstCut(shape, xs, ys, n, box, rng, count) {
   for (let k = 0; k < count; k++) {
     for (let i = 0; i < 4; i++) seg[i] = box[i % 2] + rng() * (box[2 + (i % 2)] - box[i % 2]);
     b.reset();
-    drawVisible(b, LAYER.WING, false, seg, 2, false, [shape]);
+    drawVisible(b, LAYER.WING, false, seg, 2, false, null, [shape]);
     for (let l = 0; l < b.lineCount; l++) {
       for (const v of [b.starts[l], b.starts[l + 1] - 1]) {
         const x = b.pts[2 * v];
@@ -47,19 +47,13 @@ function worstCut(shape, xs, ys, n, box, rng, count) {
   return worst;
 }
 
-test('every forewing over 1,000 seeds is a valid star shape', () => {
-  for (let s = 0; s < 1000; s++) {
-    generate(s);
-    assert.ok(lastForewing().valid, `seed ${s}: forewing vertex out of angle order`);
-  }
-});
-
-test('cuts against forewings land on the outline (within 0.01 units)', () => {
+test('cuts against wings (including tailed hindwings) land on the outline (within 0.01 units)', () => {
   const rng = createRng(99);
   let worst = 0;
   for (let s = 0; s < 200; s++) {
     generate(s);
-    const f = lastForewing();
+    const w = lastWings();
+    const f = s % 2 ? w.fore.shape : w.hind.shape;
     const pad = 20;
     const box = [f.minX - pad, f.minY - pad, f.maxX + pad, f.maxY + pad];
     worst = Math.max(worst, worstCut(f, f.x, f.y, f.n, box, rng, 40));
@@ -87,7 +81,18 @@ test('a line through a shape is split into two visible parts', () => {
   for (let i = 0; i < n; i++) p.w[i] = i === 0 || i === n - 1 ? 0 : 5;
   p.finish();
   const b = new Builder();
-  drawVisible(b, LAYER.WING, false, new Float64Array([-20, 5, 20, 5]), 2, false, [p]);
+  drawVisible(b, LAYER.WING, false, new Float64Array([-20, 5, 20, 5]), 2, false, null, [p]);
   assert.equal(b.lineCount, 2);
   assert.ok(Math.abs(b.pts[2] + 5) < 1e-9 && Math.abs(b.pts[4] - 5) < 1e-9);
+});
+
+test('the inside shape keeps only what is within it', () => {
+  const p = new ProfileShape();
+  const n = p.reset(0, 10, 1);
+  for (let i = 0; i < n; i++) p.w[i] = i === 0 || i === n - 1 ? 0 : 5;
+  p.finish();
+  const b = new Builder();
+  drawVisible(b, LAYER.WING, false, new Float64Array([-20, 5, 20, 5]), 2, false, p, []);
+  assert.equal(b.lineCount, 1);
+  assert.ok(Math.abs(b.pts[0] + 5) < 1e-9 && Math.abs(b.pts[2] - 5) < 1e-9);
 });

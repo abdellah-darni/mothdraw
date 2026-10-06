@@ -1,11 +1,12 @@
 // @ts-check
 // Hidden-line removal. A polyline is walked in steps of at most MAX_STEP
-// units; each step asks the occluders whether the point is covered. Where
+// units; each step asks whether the point is visible: inside the shape the
+// line belongs to (if any) and not covered by an occluder in front. Where
 // the answer flips, the crossing is found exactly (DESIGN.md §3.1) and the
 // visible runs are written to the builder.
 
 /** @typedef {import('./builder.js').Builder} Builder */
-/** @typedef {import('./shapes.js').StarShape | import('./shapes.js').ProfileShape} Occluder */
+/** @typedef {import('./shapes.js').BandShape | import('./shapes.js').ProfileShape} Occluder */
 
 /** Longest stretch walked without testing; smaller than any occluder. */
 const MAX_STEP = 2;
@@ -13,30 +14,37 @@ const MAX_STEP = 2;
 const BISECT = 12;
 
 /**
- * Index of the first occluder covering the point, or -1 if it is visible.
+ * The shape that hides this point, or null if it is visible: `inside` if
+ * the point is outside it, otherwise the first occluder covering it.
+ * @param {Occluder | null} inside
  * @param {readonly Occluder[]} occ
  * @param {number} x
  * @param {number} y
+ * @returns {Occluder | null}
  */
-function cover(occ, x, y) {
-  for (let k = 0; k < occ.length; k++) if (occ[k].contains(x, y)) return k;
-  return -1;
+function blocker(inside, occ, x, y) {
+  if (inside !== null && !inside.contains(x, y)) return inside;
+  for (let k = 0; k < occ.length; k++) if (occ[k].contains(x, y)) return occ[k];
+  return null;
 }
 
 /**
  * Parameter on segment A→B where visibility changes, given that it changes
  * somewhere between tVis (visible) and tHid (hidden).
+ * @param {Occluder | null} inside
  * @param {readonly Occluder[]} occ
  * @param {number} ax @param {number} ay @param {number} bx @param {number} by
  * @param {number} tVis @param {number} tHid
  */
-function crossingAt(occ, ax, ay, bx, by, tVis, tHid) {
-  // 1. Bracket: halve the interval, keeping the visible and hidden ends.
-  let k = -1;
+function crossingAt(inside, occ, ax, ay, bx, by, tVis, tHid) {
+  // 1. Bracket: halve the interval, keeping the visible and hidden ends,
+  //    and remember which shape hides the hidden end.
+  /** @type {Occluder | null} */
+  let k = null;
   for (let it = 0; it < BISECT; it++) {
     const tm = (tVis + tHid) / 2;
-    const c = cover(occ, ax + (bx - ax) * tm, ay + (by - ay) * tm);
-    if (c < 0) tVis = tm;
+    const c = blocker(inside, occ, ax + (bx - ax) * tm, ay + (by - ay) * tm);
+    if (c === null) tVis = tm;
     else {
       tHid = tm;
       k = c;
@@ -44,27 +52,28 @@ function crossingAt(occ, ax, ay, bx, by, tVis, tHid) {
   }
   const hx = ax + (bx - ax) * tHid;
   const hy = ay + (by - ay) * tHid;
-  if (k < 0) k = cover(occ, hx, hy);
-  // 2. Snap: intersect with the actual edge of the occluder that hides us.
+  if (k === null) k = blocker(inside, occ, hx, hy);
+  // 2. Snap: intersect with the actual edge of that shape.
   const lo = tVis < tHid ? tVis : tHid;
   const hi = tVis < tHid ? tHid : tVis;
-  const t = k < 0 ? NaN : occ[k].crossing(ax, ay, bx, by, hx, hy, lo, hi);
+  const t = k === null ? NaN : k.crossing(ax, ay, bx, by, hx, hy, lo, hi);
   return t === t ? t : (tVis + tHid) / 2;
 }
 
 /**
- * Writes the parts of a polyline that no occluder covers.
+ * Writes the visible parts of a polyline.
  * @param {Builder} b
  * @param {number} layer
  * @param {boolean} mirror
  * @param {Float64Array} xy  x and y interleaved
  * @param {number} n         vertex count
  * @param {boolean} closed   also draw the segment from the last vertex to the first
- * @param {readonly Occluder[]} occ  front-most first
+ * @param {Occluder | null} inside  keep only what is inside this shape (null: no limit)
+ * @param {readonly Occluder[]} occ  shapes in front, front-most first
  */
-export function drawVisible(b, layer, mirror, xy, n, closed, occ) {
+export function drawVisible(b, layer, mirror, xy, n, closed, inside, occ) {
   if (n < 2) return;
-  let hidden = cover(occ, xy[0], xy[1]) >= 0;
+  let hidden = blocker(inside, occ, xy[0], xy[1]) !== null;
   if (!hidden) {
     b.begin(layer, mirror);
     b.point(xy[0], xy[1]);
@@ -82,9 +91,11 @@ export function drawVisible(b, layer, mirror, xy, n, closed, occ) {
       const t = s / steps;
       const qx = ax + (bx - ax) * t;
       const qy = ay + (by - ay) * t;
-      const qHidden = cover(occ, qx, qy) >= 0;
+      const qHidden = blocker(inside, occ, qx, qy) !== null;
       if (qHidden !== hidden) {
-        const tc = hidden ? crossingAt(occ, ax, ay, bx, by, t, tPrev) : crossingAt(occ, ax, ay, bx, by, tPrev, t);
+        const tc = hidden
+          ? crossingAt(inside, occ, ax, ay, bx, by, t, tPrev)
+          : crossingAt(inside, occ, ax, ay, bx, by, tPrev, t);
         const cx = ax + (bx - ax) * tc;
         const cy = ay + (by - ay) * tc;
         if (hidden) {
@@ -103,4 +114,25 @@ export function drawVisible(b, layer, mirror, xy, n, closed, occ) {
     }
   }
   b.end();
+}
+
+const seg = new Float64Array(6);
+
+/**
+ * A short stroke of two or three points (the bulk of all texture).
+ * @param {Builder} b @param {number} layer @param {boolean} mirror
+ * @param {number} x0 @param {number} y0
+ * @param {number} x1 @param {number} y1
+ * @param {number} x2 @param {number} y2  pass NaN for a two-point stroke
+ * @param {Occluder | null} inside
+ * @param {readonly Occluder[]} occ
+ */
+export function drawStroke(b, layer, mirror, x0, y0, x1, y1, x2, y2, inside, occ) {
+  seg[0] = x0;
+  seg[1] = y0;
+  seg[2] = x1;
+  seg[3] = y1;
+  seg[4] = x2;
+  seg[5] = y2;
+  drawVisible(b, layer, mirror, seg, x2 === x2 ? 3 : 2, false, inside, occ);
 }

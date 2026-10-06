@@ -1,7 +1,11 @@
 // @ts-check
-// Scratch geometry: a growable point list, and closed outlines built from
-// curved edges with rounded corners. Both are reused across generations,
-// so they only allocate when a moth needs more room than any before it.
+// Scratch geometry: a growable point list, closed outlines built from
+// curved edges with rounded corners, and the finishing steps applied to an
+// outline (scallops, hand-drawn wobble, simplification). Everything is
+// reused across generations and only allocates when a moth needs more room
+// than any before it.
+
+import { noise2 } from './noise.js';
 
 export class Polyline {
   /** @param {number} [capacity] */
@@ -65,6 +69,11 @@ export class EdgeLoop {
     this.len = new Float64Array(16);
     this.t0 = new Float64Array(16);
     this.t1 = new Float64Array(16);
+    /**
+     * After sample(): mark[i] is the index of the first vertex of edge i, so
+     * vertices mark[i] .. mark[i+1]-1 are edge i followed by its end corner.
+     */
+    this.mark = new Int32Array(17);
   }
 
   reset() {
@@ -170,6 +179,7 @@ export class EdgeLoop {
 
     for (let i = 0; i < count; i++) {
       const o = i * REC;
+      this.mark[i] = out.n;
       // The trimmed edge. Its first point is the end of the previous
       // corner, so skip it except on the very first edge.
       const span = t1[i] - t0[i];
@@ -199,5 +209,154 @@ export class EdgeLoop {
         out.push(u * u * sx + 2 * u * t * cx + t * t * ex, u * u * sy + 2 * u * t * cy + t * t * ey);
       }
     }
+    this.mark[count] = out.n;
   }
+}
+
+// Scratch for the outline finishing steps.
+let dx = new Float64Array(4096);
+let dy = new Float64Array(4096);
+let keep = new Uint8Array(4096);
+let stack = new Int32Array(8192);
+
+/** @param {number} n */
+function ensure(n) {
+  if (n <= dx.length) return;
+  dx = new Float64Array(n * 2);
+  dy = new Float64Array(n * 2);
+  keep = new Uint8Array(n * 2);
+  stack = new Int32Array(n * 4);
+}
+
+/**
+ * Unit normal at vertex i, pointing left of travel (outside, for a loop
+ * that runs clockwise on screen). Written to dx[i], dy[i].
+ * @param {Float64Array} xy @param {number} n @param {boolean} closed @param {number} i
+ */
+function normalAt(xy, n, closed, i) {
+  const a = i > 0 ? i - 1 : closed ? n - 1 : 0;
+  const b = i < n - 1 ? i + 1 : closed ? 0 : n - 1;
+  const tx = xy[2 * b] - xy[2 * a];
+  const ty = xy[2 * b + 1] - xy[2 * a + 1];
+  const l = Math.hypot(tx, ty) || 1;
+  dx[i] = ty / l;
+  dy[i] = -tx / l;
+}
+
+/**
+ * Scallops: the margin bulges outward between `count` evenly spaced cusps
+ * along vertices [from, to). Real moths are scalloped between vein ends,
+ * and the veins are placed to end at these cusps.
+ * @param {Polyline} pl @param {number} from @param {number} to
+ * @param {number} count @param {number} depth  model units
+ */
+export function scallop(pl, from, to, count, depth) {
+  if (depth <= 0 || to - from < 3) return;
+  const xy = pl.xy;
+  ensure(pl.n);
+  let total = 0;
+  for (let i = from + 1; i < to; i++) total += Math.hypot(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
+  for (let i = from; i < to; i++) normalAt(xy, pl.n, true, i);
+  let s = 0;
+  for (let i = from; i < to; i++) {
+    if (i > from) s += Math.hypot(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
+    const f = (s / total) * count;
+    const d = depth * Math.pow(Math.sin(Math.PI * (f - Math.floor(f))), 0.6);
+    // Store the move; apply after all normals are taken from the original.
+    dx[i] *= d;
+    dy[i] *= d;
+  }
+  for (let i = from; i < to; i++) {
+    xy[2 * i] += dx[i];
+    xy[2 * i + 1] += dy[i];
+  }
+}
+
+/**
+ * Hand-drawn wobble: moves every vertex along its normal by smooth noise,
+ * at most `amp` units, with bumps about `wavelength` units apart. `row`
+ * picks a different stretch of noise so two lines do not wobble alike.
+ * @param {Polyline} pl @param {boolean} closed
+ * @param {number} amp @param {number} wavelength @param {number} row
+ */
+export function roughen(pl, closed, amp, wavelength, row) {
+  const n = pl.n;
+  const xy = pl.xy;
+  ensure(n);
+  let s = 0;
+  for (let i = 0; i < n; i++) {
+    if (i > 0) s += Math.hypot(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
+    normalAt(xy, n, closed, i);
+    const d = amp * (2 * noise2(s / wavelength, row) - 1);
+    dx[i] *= d;
+    dy[i] *= d;
+  }
+  for (let i = 0; i < n; i++) {
+    xy[2 * i] += dx[i];
+    xy[2 * i + 1] += dy[i];
+  }
+}
+
+/**
+ * Copies a closed polyline into `dst`, keeping only the vertices needed to
+ * stay within `eps` units of the original (Douglas-Peucker, with an
+ * explicit stack instead of recursion). Long gentle curves shrink to a
+ * handful of points; tight scallops keep theirs.
+ * @param {Polyline} src @param {Polyline} dst @param {number} eps
+ */
+export function simplifyClosed(src, dst, eps) {
+  const n = src.n;
+  const xy = src.xy;
+  ensure(n);
+  keep.fill(0, 0, n);
+  // Anchor the loop at vertex 0 and the vertex farthest from it.
+  let far = 0;
+  let best = -1;
+  for (let i = 1; i < n; i++) {
+    const d = (xy[2 * i] - xy[0]) ** 2 + (xy[2 * i + 1] - xy[1]) ** 2;
+    if (d > best) {
+      best = d;
+      far = i;
+    }
+  }
+  keep[0] = keep[far] = 1;
+  let sp = 0;
+  stack[sp++] = 0;
+  stack[sp++] = far;
+  stack[sp++] = far;
+  stack[sp++] = n; // index n stands for vertex 0 again
+  const eps2 = eps * eps;
+  while (sp > 0) {
+    const b = stack[--sp];
+    const a = stack[--sp];
+    if (b - a < 2) continue;
+    const ax = xy[2 * a];
+    const ay = xy[2 * a + 1];
+    const bi = b % n;
+    const ex = xy[2 * bi] - ax;
+    const ey = xy[2 * bi + 1] - ay;
+    const l2 = ex * ex + ey * ey || 1e-12;
+    let m = -1;
+    let dmax = eps2;
+    for (let i = a + 1; i < b; i++) {
+      const px = xy[2 * i] - ax;
+      const py = xy[2 * i + 1] - ay;
+      // Squared distance from the vertex to the chord's line.
+      const c = px * ey - py * ex;
+      const d = (c * c) / l2;
+      if (d > dmax) {
+        dmax = d;
+        m = i;
+      }
+    }
+    if (m >= 0) {
+      keep[m] = 1;
+      stack[sp++] = a;
+      stack[sp++] = m;
+      stack[sp++] = m;
+      stack[sp++] = b;
+    }
+  }
+  dst.reset();
+  for (let i = 0; i < n; i++) if (keep[i]) dst.push(xy[2 * i], xy[2 * i + 1]);
 }

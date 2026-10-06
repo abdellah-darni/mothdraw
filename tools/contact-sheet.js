@@ -29,8 +29,7 @@ let cells = '';
 for (let i = 0; i < COUNT; i++) {
   const seed = start + i;
   const moth = generate(seed);
-  const label = `${seed} · ${moth.name ? `<i>${moth.name}</i>` : moth.family}`;
-  cells += `<figure>${toSVG(moth.drawing, { width: CELL_W - 10 })}<figcaption>${label}</figcaption></figure>`;
+  cells += `<figure>${toSVG(moth.drawing, { width: CELL_W - 10, label: moth.name })}<figcaption>seed ${seed}</figcaption></figure>`;
 }
 
 const rows = Math.ceil(COUNT / COLS);

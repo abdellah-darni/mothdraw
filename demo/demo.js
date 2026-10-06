@@ -2,7 +2,7 @@
 // Demo: one moth from ?seed= in the URL, drawn with the Canvas renderer,
 // with an SVG download of the same drawing.
 
-import { drawDrawing, fitDrawing, generate, toSVG } from '../src/index.js';
+import { drawDrawing, drawLabel, fitDrawing, generate, toSVG } from '../src/index.js';
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('moth'));
 const nameEl = /** @type {HTMLElement} */ (document.getElementById('name'));
@@ -34,14 +34,14 @@ function show(seed) {
   const ms = performance.now() - t0;
 
   const { drawing } = moth;
-  nameEl.textContent = moth.name || `seed ${seed}`;
+  nameEl.textContent = `seed ${seed}`;
   statsEl.textContent =
     `${(drawing.points.length / 2).toLocaleString()} points, ` +
     `${(drawing.offsets.length - 1).toLocaleString()} lines, ${ms.toFixed(1)} ms`;
 
   if (svgUrl) URL.revokeObjectURL(svgUrl);
   svgUrl = URL.createObjectURL(
-    new Blob([toSVG(drawing, { title: moth.name || seed })], { type: 'image/svg+xml' }),
+    new Blob([toSVG(drawing, { title: moth.name, label: moth.name })], { type: 'image/svg+xml' }),
   );
   svgLink.href = svgUrl;
   svgLink.download = `moth-${seed}.svg`;
@@ -60,11 +60,14 @@ function render() {
   }
   ctx.clearRect(0, 0, w, h);
   // Canvas cannot use currentColor directly; read the computed colour.
-  ctx.strokeStyle = getComputedStyle(canvas).color;
+  const style = getComputedStyle(canvas);
+  ctx.strokeStyle = ctx.fillStyle = style.color;
   ctx.lineWidth = dpr;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  drawDrawing(ctx, moth.drawing, fitDrawing(moth.drawing, w, h));
+  const fit = fitDrawing(moth.drawing, w, h);
+  drawDrawing(ctx, moth.drawing, fit);
+  drawLabel(ctx, moth.drawing, fit, moth.name, style.fontFamily);
 }
 
 form.addEventListener('submit', (e) => {

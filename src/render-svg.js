@@ -11,7 +11,10 @@
  *                                   Omitted: the SVG scales to its container.
  * @property {number} [strokeWidth]  stroke width in screen px (default 1)
  * @property {number} [precision]    decimals per coordinate (default 1, i.e. 0.1 unit)
- * @property {string} [title]        e.g. the species name; becomes <title>
+ * @property {string} [title]        becomes <title> (for screen readers and tooltips)
+ * @property {string} [label]        the species name, drawn in italics at drawing.label.
+ *                                   No font-family is set, so inline SVG uses the
+ *                                   page's font and a standalone file the viewer's serif.
  */
 
 /**
@@ -20,7 +23,7 @@
  * @returns {string}
  */
 export function toSVG(drawing, options = {}) {
-  const { width, strokeWidth = 1, precision = 1, title } = options;
+  const { width, strokeWidth = 1, precision = 1, title, label } = options;
   const { points, offsets } = drawing;
   const f = 10 ** precision;
   const lines = offsets.length - 1;
@@ -41,11 +44,15 @@ export function toSVG(drawing, options = {}) {
   const H = drawing.height;
   const size = width ? ` width="${width}" height="${Math.round((width * H) / W)}"` : '';
   const titleTag = title ? `<title>${escapeXml(title)}</title>` : '';
+  const lb = drawing.label;
+  const text = label
+    ? `<text x="${lb.x}" y="${lb.y}" font-size="${lb.size}" font-style="italic" text-anchor="middle" fill="currentColor">${escapeXml(label)}</text>`
+    : '';
   // non-scaling-stroke keeps the line weight constant at any display size.
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}"${size}>${titleTag}` +
     `<path d="${d}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" ` +
-    `stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`
+    `stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${text}</svg>`
   );
 }
 

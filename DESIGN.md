@@ -68,20 +68,22 @@ occluders) answers one question cheaply: *is this point inside me?*
   is inside if `|x|` is less than the half-width interpolated between the two
   nearest rows. The drawn outline is the same table, and straight-line
   interpolation between rows is exactly the segment drawn between them.
-- **The forewing** is a star polygon around its area centroid. The outline
-  is a list of vertices ordered by their angle as seen from the centroid. A
-  point is inside if it is nearer to the centroid than the outline edge that
-  a ray from the centroid at the point's angle would cross. An angle index
-  finds that edge in constant time (section 3.2). The drawn outline uses the
-  same vertices, so the outline and the inside test always agree.
-  *Changed in stage 2:* the first draft centred this on the wing base. The
-  base is a corner of the wing, and seen from a corner the leading and
-  trailing edges run almost along the rays, which makes the angle order
-  fragile. Any nearly convex shape can be seen whole from an interior
-  point, so the centroid is robust. A test checks the angle order holds for
-  1,000 seeds.
-- **The hindwing needs no inside test.** It is the back-most part, so
-  nothing is ever hidden behind it. Tails are simply part of its outline.
+- **Wings** are any closed polygon, tested by the even-odd rule: a point
+  is inside if a ray to its right crosses the outline an odd number of
+  times. To avoid checking every edge, the wing's height is cut into 256
+  horizontal bands, and each band lists the edges that cross it, so a test
+  looks at only the 2 to 4 edges in the point's band (section 3.2). The
+  drawn outline uses the same vertices, so the outline and the inside test
+  always agree.
+
+  *History.* The first draft used a star polygon around the wing base. In
+  stage 2 it moved to the centroid, because seen from a corner the angle
+  order was fragile. In stage 3 the star test was replaced by the band test
+  for three reasons. Texture must be clipped to the *inside* of the hindwing
+  too. A tailed hindwing is not star-shaped. And measured on the same
+  outlines, the band test is a little faster (50.6 ns against 54.9 ns per
+  test) and agreed on all 20 million sample points. One polygon type is
+  also simpler to understand than two.
 
 That makes the shape arithmetic free:
 
@@ -96,14 +98,10 @@ answer changes, find the crossing (section 3.1). Lines are resampled so no
 segment is longer than 2 units, which stops a segment from skipping over a
 thin shape.
 
-The combined test does not just return true or false. It returns `0` for
-visible, or the id of the front-most occluder covering the point. That id is
-what the crossing step needs.
-
-Trade-off: the forewing outline must be star-shaped from its centroid,
-meaning every point of its outline can be seen in a straight line from the
-centroid. A rounded triangle always is. If a future shape breaks this, such
-as a strongly hooked tip, it gets its own inside test joined with `||`.
+The combined test does not just return true or false. It returns `null`
+for visible, or the shape that hides the point: either the shape the line
+must stay inside (a wing, for its own texture), or the front-most occluder
+covering it. That shape is what the crossing step needs.
 
 ### 3.1 Finding the exact crossing point
 
@@ -114,9 +112,9 @@ one segment endpoint `A` is visible and the other endpoint `B` is hidden:
    changes. That narrows the crossing to 1/4096 of a segment of at most
    2 units, so under 0.0005 units. The hidden end also tells us which
    occluder did the hiding.
-2. **Snap to the edge.** Find the edge of that occluder next to the bracket:
-   the outline segment in that wedge for a wing, or the segment between two
-   rows for the body. Then intersect our segment with that edge exactly, as
+2. **Snap to the edge.** Find the edge of that shape next to the bracket:
+   an outline segment in the bracket's band for a wing, or the segment
+   between two rows for the body. Then intersect our segment with that edge exactly, as
    two straight lines. The visible part ends at that intersection point.
 3. **Why no gap.** The inside test describes exactly the polygon that is
    drawn, not a smooth curve the polygon only approximates. So the
@@ -168,46 +166,45 @@ radius at 256 equal angles. The forewing covers a fan of about 100°
   vertices, and a scallop point is off by at most half that spacing, about
   1 device pixel at the largest scale. Because of section 3.1, the inside
   test matches the drawn outline exactly either way.
-- **Look up by angle with an index.** Each vertex stores its angle from the
-  centre. Angles must strictly increase around the outline, which is the
-  star-shaped rule, and wing building checks this. A table of 1024 equal
-  angle buckets records the last vertex before each bucket starts, so a
-  lookup checks 1 to 3 vertices. That is still constant time, and
-  resolution no longer depends on angle.
-- **Memory** (measured): a forewing has 1,190 to 1,420 vertices. Three
-  float64 arrays plus 1024 bucket entries come to about 38 KB. It lives in
-  scratch memory and is reused for every moth.
-- **Measured accuracy**: over 1,000 seeds and 87,958 cuts, the worst cut
-  endpoint lies 0.0000345 model units from the drawn outline. That residue
-  is float32 rounding in the builder.
+- **Simplify what is drawn.** After scallops and wobble are applied, the
+  outline is simplified (Douglas-Peucker) to within 0.06 model units:
+  1,269 vertices become a median of 105 for a forewing and 129 for a
+  hindwing. The inside test is built from the *simplified* polygon, so the
+  outline and the test still describe the same polygon, and section 3.1
+  still holds exactly. Fine scallops keep their vertices; long gentle
+  curves need few.
+- **Look up with a band index.** 256 bands over the wing's height; each
+  lists the edges crossing it. A test checks 2 to 4 edges.
+- **Memory**: two float64 vertex arrays, 257 band offsets and the band edge
+  lists, a few KB per wing, kept in scratch memory and reused.
+- **Measured accuracy** (stage 3): over 1,000 seeds and 85,112 cuts against
+  both wings, including tailed hindwings, the worst cut endpoint lies
+  0.0000169 model units from the drawn outline. That residue is float32
+  rounding in the builder.
 
-### Wing-local coordinates
+### Wing-local coordinates (settled in stage 3)
 
-*To be settled in stage 3.* Since stage 2, the occlusion lookup is centred
-on the forewing centroid, not the base. So the `(u, v)` map below will get
-its own origin at the wing base, with its own angle table, separate from
-the occlusion centre. The idea stays the same.
+Each wing has its own coordinates for placing the pattern:
 
-A base-and-angle view gives each wing a natural coordinate system:
+- `u` from 0 at the wing base to 1 at the termen
+- `v` from 0 at the apex end of the termen to 1 at the tornus end
 
-- `u` from 0 at the base to 1 at the margin
-- `v` from 0 at the costa to 1 at the dorsum, taken from the angle
+The termen, taken before scallops and wobble, is resampled at 49 evenly
+spaced points into a table. The point `(u, v)` lies `u` of the way from the
+base to the termen point at fraction `v`. The reverse costs one `atan2`, a
+binary search in the table of those 49 points' angles from the base, and a
+division. On a tailed hindwing the table skips the tail, bridging its root
+with a straight line, so the tail lies at `u > 1`.
 
-Going from `(x, y)` to `(u, v)` costs one `atan2`, the bucket lookup and one
-division. Going from `(u, v)` to `(x, y)` is the reverse lookup. Wing detail
-is placed in `(u, v)`:
+Placed in `(u, v)`:
 
-- **Veins**: a closed discal cell around `u ≈ 0.45`, with veins from its edge
-  to evenly spaced points on the margin.
-- **Bands**: wavy lines at a fixed `u` (for example antemedial at 0.3,
-  postmedial at 0.65) running from costa to dorsum.
-- **Discal spot**: at the end of the cell.
-- **Eyespots**: concentric rings at a chosen `(u, v)`.
-- **Scallops**: the margin dips between vein ends, as on real moths.
-- **Fringe**: short strokes outward from the margin.
-
-Because everything uses `u < 1`, detail stays inside the wing by
-construction, and patterns can be written as plain functions of `(u, v)`.
+- **Veins**: a closed discal cell around `u ≈ 0.4–0.5`, costal and anal
+  veins, and radial veins from the cell to `v = j / scallops`, which is
+  exactly where the scallop cusps fall.
+- **Cross lines**: smooth, zigzag or toothed lines at a fixed `u`, run a
+  little past `v = 0` and `v = 1` so the clip ends them on the outline.
+- **Spots**: kidney and ring spots, discal dots, eyespots.
+- **Tone**: each family's darkness function is written in `(u, v)`.
 
 ### Depth order and mirroring
 
@@ -254,6 +251,73 @@ Proportions come from four real families. Each family is a table of
 
 Stage 4 adds blending between plans. Stage 2 picks one family per seed.
 
+### 3.4 Detail and texture (stage 3)
+
+The target is fishdraw's plate `samples/000016.svg`, where most of the ink
+is texture. `src/pattern.js` builds it from four tools:
+
+- **Tone and a stroke field.** Each family has a tone function, giving
+  darkness from 0 to 1 at a wing-local point. A jittered grid of candidate
+  strokes covers the wing. Each candidate is kept with probability equal to
+  the tone there, and darker places get longer strokes. A stroke is
+  2 points, or 3 when it is long enough to bend.
+- **Cross lines**: smooth, zigzag or toothed, at a fixed `u`.
+- **Veins**: a cell with radial veins to the scallop cusps. Veins start a
+  little way from the base, bow slightly, and have small breaks.
+- **Spots**: kidney and ring spots, discal dots, and eyespots made of
+  concentric rings around a clear window.
+
+**The hand-drawn feel comes from variation between strokes, not within
+them.** Every stroke differs in position (the jittered grid), angle (±0.07
+to ±0.22 rad), and length (×0.6 to ×1.4). About one in ten is broken by a
+small gap. Per-point wobble is kept for the long lines: outlines (0.35 units
+of amplitude, bumps 38 units apart), cross lines, veins and the frame. The
+wobble is applied *before* the inside tests are built, so section 3.1 still
+holds exactly.
+
+**How the families are told apart:**
+
+| family | texture | marks |
+|---|---|---|
+| Noctuidae | dense radial dashes; cross-hatched where darkest | double zigzag and toothed cross lines; kidney and ring spots; hindwing with a dark border (*Noctua*) or two dark bands (*Catocala*) |
+| Geometridae | fine speckle in random directions | crisp thin lines carried across both wings; discal dots; dots along the margin. Three variants: peppered, banded (dark median band), clean (doubled lines) |
+| Sphingidae | long streaks along the wing | streaked variant (dark central streak, banded hindwing) or banded variant (pale oblique band on a dark wing, pale band on the hindwing); banded abdomen |
+| Saturniidae | strokes laid across the radial direction, following the bands; crossed where dark | dark costal stripe; smooth postmedial line; eyespots, large on hindwings without tails |
+
+**The same ink density on the page for every moth.** Texture cells are set
+in page units: before the pattern is drawn, the specimen's final scale is
+estimated from the built wings and body. Without that, wide moths (scaled
+down more) came out denser than narrow ones. `generate(seed, { density })`
+then scales the number of texture strokes, with 1 as the default.
+
+**Body.** Hair on the thorax and head; a collar and tegulae (the shoulder
+covers over the wing bases); eyes; abdominal segments bowed backward; hair
+shading towards the sides, banded on hawk moths; tufts along the edges.
+
+**The plate.** A ruled frame (lines in the drawing, with slight wobble but
+clean corners), the specimen fitted to a box above, and the name below.
+The name is *text*, not lines. `Drawing.label` gives its position and size,
+and each renderer draws it in italics in the page's font: SVG `<text>`
+without a font-family, and canvas `fillText` with the page's computed
+font. Until stage 4 the name is "*Family* sp.", the naturalist's label for
+an unidentified species.
+
+### 3.5 Pen animation plan (stage 5)
+
+The pen takes a fixed time, about 6 to 8 seconds, whatever the point count:
+
+- When a moth arrives, compute the cumulative ink length per polyline once
+  (one pass, about 0.1 ms for 15,000 points), in the worker or on arrival.
+- Pen speed = total length / duration. Each frame advances the pen by
+  speed × elapsed time and strokes only the new part, from the previous pen
+  position to the new one. The canvas keeps what was already drawn, so a
+  frame costs only its own few hundred points.
+- Polylines play in drawing order (layers: frame, body, wing outlines,
+  veins, patterns, texture, fringe, antennae). Each mirrored line is
+  followed by its mirror image, so the specimen grows symmetrically.
+- When the pen finishes, the name fades in. Then the plate holds, using a
+  timer, not animation frames.
+
 ## 4. Seeds and randomness
 
 - A string or number seed is hashed to 32 bits.
@@ -275,15 +339,18 @@ Stage 4 adds blending between plans. Stage 2 picks one family per seed.
  *                                   vertices offsets[i] .. offsets[i+1] - 1
  * @property {number} width          frame width in drawing units
  * @property {number} height         frame height in drawing units
+ * @property {{x: number, y: number, size: number}} label  where the name goes
  */
 
-/** generate(seed, options) -> { drawing: Drawing, name: string, seed } */
+/** generate(seed, { density, reuse }) -> { drawing, name, family, seed } */
 ```
 
 - Vertex `k` is `points[2k], points[2k + 1]`.
-- Polylines are stored in **drawing order**: body outline, wing outlines,
-  veins, bands and spots, shading, fringe. The pen animation simply plays
-  them in sequence.
+- Polylines are stored in **drawing order**: frame, body, wing outlines,
+  veins, patterns, texture, fringe, antennae. The pen animation simply
+  plays them in sequence.
+- The frame's lines are already in frame units. The builder copies them
+  as they are, and leaves them out of the fit and the mirroring.
 - The frame is a fixed 1000 × 750 units. Renderers scale it to their target
   size and keep the stroke width constant on screen.
 - Float32 is precise to about 0.0001 units at this size, far below a pixel.
@@ -343,9 +410,10 @@ src/
   geom.js           small vector and curve helpers
   builder.js        scratch buffers, layers, mirroring, packing to Drawing
   polyline.js       growable point lists; outlines from bowed edges and rounded corners
-  shapes.js         occluders: StarShape (forewing), ProfileShape (body parts)
-  clip.js           hidden-line removal; hatch and stipple fill (stage 3)
-  body.js  wings.js  antennae.js  pattern.js
+  shapes.js         inside tests: BandShape (wings), ProfileShape (body parts)
+  clip.js           hidden-line removal and clipping to a shape's inside
+  body.js  wings.js  antennae.js
+  pattern.js        tone functions, stroke fields, cross lines, veins, spots
   moth.js           assembles one moth: builds parts, draws them in depth order
   plans.js          body plans and blending
   name.js           pseudo-Latin names
@@ -361,7 +429,14 @@ demo/index.html      one moth from ?seed=
 
 ## 7. Where the time should go
 
-These are **estimates to be checked** at stages 1 to 3, not measurements:
+**Measured at stage 3** (1,000 moths, M2): median **2.0 ms**, p95
+**3.3 ms**, about 11,100 points. That is under the 3 to 8 ms first
+estimated, and far under the 20 ms target. One run in one bench took
+22 ms; reruns peaked at 4.1 and 4.6 ms, which points to a
+garbage-collection pause, not the generator. Stage 6 will profile where
+the 2 ms goes.
+
+The original estimates, kept for comparison:
 
 | step | estimate | reason |
 |---|---|---|
@@ -406,8 +481,6 @@ comfortable, and the bench will report the real number every stage.
 - **Clipping uses point sampling** to detect crossings (section 3.1). A
   shape thinner than 2 units could be missed. No occluder is that thin, and
   the contact sheet will show it if one is.
-- **The star-shaped wing rule** may limit strongly hooked wing tips. The
-  fallback is the same as for tails: an extra inside test joined with `||`.
 - **Pen-animation order.** Drawing each polyline followed by its mirror image
   may look better than right half then left half. The format allows either,
   so this is decided in stage 5.
