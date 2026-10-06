@@ -3,8 +3,9 @@
 A procedural moth drawing generator. A seed goes in; a line drawing of a
 pinned moth specimen comes out, different for every seed.
 
-> Work in progress. Stage 1 of 6: the foundations are in place, and the
-> generator currently draws a placeholder test card instead of a moth.
+> Work in progress. Stage 2 of 6: moth outlines (body, wings, antennae)
+> from four real family body plans, with hidden-line removal. Wing detail,
+> shading and names come next.
 
 ## Use
 

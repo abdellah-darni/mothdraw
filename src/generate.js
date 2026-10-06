@@ -7,7 +7,8 @@
 import { Builder } from './builder.js';
 import { seedNoise } from './noise.js';
 import { hashSeed, stream } from './rng.js';
-import { drawTestcard } from './testcard.js';
+import { drawMoth } from './moth.js';
+import { samplePlan } from './plans.js';
 
 /** @typedef {import('./builder.js').Drawing} Drawing */
 /** @typedef {import('./builder.js').Reuse} Reuse */
@@ -21,6 +22,7 @@ import { drawTestcard } from './testcard.js';
  * @typedef {object} Moth
  * @property {Drawing} drawing
  * @property {string} name   pseudo-Latin species name (stage 4; empty for now)
+ * @property {string} family the real moth family whose body plan was used
  * @property {string | number} seed  the seed as given
  */
 
@@ -38,8 +40,9 @@ const builder = new Builder();
 export function generate(seed, options = {}) {
   const seed32 = hashSeed(seed);
   seedNoise(stream(seed32, 'noise'));
+  const plan = samplePlan(stream(seed32, 'plan'));
   builder.reset();
-  drawTestcard(builder, stream(seed32, 'shape'));
+  drawMoth(builder, plan);
   const drawing = builder.pack(FRAME_WIDTH, FRAME_HEIGHT, FRAME_PAD, options.reuse);
-  return { drawing, name: '', seed };
+  return { drawing, name: '', family: plan.family, seed };
 }

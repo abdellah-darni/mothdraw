@@ -68,14 +68,20 @@ occluders) answers one question cheaply: *is this point inside me?*
   is inside if `|x|` is less than the half-width interpolated between the two
   nearest rows. The drawn outline is the same table, and straight-line
   interpolation between rows is exactly the segment drawn between them.
-- **Wings** are star polygons around the wing base. The outline is a list
-  of vertices ordered by their angle as seen from the base. A point is inside
-  if it is nearer to the base than the outline edge that a ray from the base
-  at the point's angle would cross. An angle index finds that edge in
-  constant time (section 3.2). The drawn outline uses the same vertices, so
-  the outline and the inside test always agree.
-- **Tails** on hindwings are a separate small shape. The hindwing test is
-  `inWing(p) || inTail(p)`.
+- **The forewing** is a star polygon around its area centroid. The outline
+  is a list of vertices ordered by their angle as seen from the centroid. A
+  point is inside if it is nearer to the centroid than the outline edge that
+  a ray from the centroid at the point's angle would cross. An angle index
+  finds that edge in constant time (section 3.2). The drawn outline uses the
+  same vertices, so the outline and the inside test always agree.
+  *Changed in stage 2:* the first draft centred this on the wing base. The
+  base is a corner of the wing, and seen from a corner the leading and
+  trailing edges run almost along the rays, which makes the angle order
+  fragile. Any nearly convex shape can be seen whole from an interior
+  point, so the centroid is robust. A test checks the angle order holds for
+  1,000 seeds.
+- **The hindwing needs no inside test.** It is the back-most part, so
+  nothing is ever hidden behind it. Tails are simply part of its outline.
 
 That makes the shape arithmetic free:
 
@@ -94,10 +100,10 @@ The combined test does not just return true or false. It returns `0` for
 visible, or the id of the front-most occluder covering the point. That id is
 what the crossing step needs.
 
-Trade-off: wing outlines must be star-shaped from the base, meaning every
-point of the wing can be seen in a straight line from the base. Real moth
-wings almost always are. Shapes that are not, such as long curved tails, are
-added as their own inside test.
+Trade-off: the forewing outline must be star-shaped from its centroid,
+meaning every point of its outline can be seen in a straight line from the
+centroid. A rounded triangle always is. If a future shape breaks this, such
+as a strongly hooked tip, it gets its own inside test joined with `||`.
 
 ### 3.1 Finding the exact crossing point
 
@@ -155,24 +161,34 @@ radius at 256 equal angles. The forewing covers a fan of about 100°
 
 **What we use instead:**
 
-- **Sample the outline by distance along it, not by angle.** At most 1 unit
-  apart along the termen, where the scallops and fringe are, and 3 units
-  along the smooth costa and dorsum. That gives 400 to 600 vertices per wing.
-  A 33-unit scallop gets at least 33 vertices. A scallop point is off by at
-  most 0.5 units, about 1 device pixel at the largest scale. Because of
-  section 3.1, the inside test matches the drawn outline exactly either way.
+- **Sample the outline by distance along it, not by angle.** Wings are
+  sampled every 0.7 model units. Measured over 1,000 seeds, one model unit
+  is 1.05 to 1.35 frame units, so vertices are at most 0.95 frame units
+  apart everywhere on the outline. A 33-unit scallop gets more than 33
+  vertices, and a scallop point is off by at most half that spacing, about
+  1 device pixel at the largest scale. Because of section 3.1, the inside
+  test matches the drawn outline exactly either way.
 - **Look up by angle with an index.** Each vertex stores its angle from the
-  base. Angles must strictly increase around the outline, which is the
+  centre. Angles must strictly increase around the outline, which is the
   star-shaped rule, and wing building checks this. A table of 1024 equal
-  angle buckets records the first vertex in each bucket, so a lookup checks
-  1 to 3 vertices. That is still constant time, and resolution no longer
-  depends on angle.
-- **Memory**: 600 vertices × (x, y, angle) plus 1024 bucket entries is about
-  11 KB per wing. It lives in scratch memory and is reused for every moth.
+  angle buckets records the last vertex before each bucket starts, so a
+  lookup checks 1 to 3 vertices. That is still constant time, and
+  resolution no longer depends on angle.
+- **Memory** (measured): a forewing has 1,190 to 1,420 vertices. Three
+  float64 arrays plus 1024 bucket entries come to about 38 KB. It lives in
+  scratch memory and is reused for every moth.
+- **Measured accuracy**: over 1,000 seeds and 87,958 cuts, the worst cut
+  endpoint lies 0.0000345 model units from the drawn outline. That residue
+  is float32 rounding in the builder.
 
 ### Wing-local coordinates
 
-The base-and-angle view gives each wing a natural coordinate system:
+*To be settled in stage 3.* Since stage 2, the occlusion lookup is centred
+on the forewing centroid, not the base. So the `(u, v)` map below will get
+its own origin at the wing base, with its own angle table, separate from
+the occlusion centre. The idea stays the same.
+
+A base-and-angle view gives each wing a natural coordinate system:
 
 - `u` from 0 at the base to 1 at the margin
 - `v` from 0 at the costa to 1 at the dorsum, taken from the angle
@@ -195,8 +211,9 @@ construction, and patterns can be written as plain functions of `(u, v)`.
 
 ### Depth order and mirroring
 
-From front to back: antennae, head, thorax, abdomen, forewing, hindwing.
-Each part's lines are clipped against the parts in front of it.
+From front to back: antennae, thorax, head, abdomen, forewing, hindwing.
+The thorax is in front of the head because its collar overlaps the back of
+the head. Each part's lines are clipped against the parts in front of it.
 
 Only the right half is generated. The left wings never overlap the right
 wings (the body sits between them), so all wing clipping happens once on the
@@ -204,6 +221,38 @@ right half and the result is mirrored. That halves the clipping work and
 makes the symmetry exact. The body is generated as a half outline and
 mirrored too. Its centre-line details (segment lines, hairs) are drawn
 across both halves directly.
+
+### 3.3 Anatomy and body plans (stage 2)
+
+Proportions come from four real families. Each family is a table of
+`[low, typical, high]` ranges in `src/plans.js`:
+
+| family | examples | look |
+|---|---|---|
+| Sphingidae | *Sphinx ligustri*, *Manduca sexta* | long narrow pointed forewings, small hindwings, heavy spindle body, hooked antennae |
+| Saturniidae | *Antheraea polyphemus*, *Actias luna* | broad rounded wings, large round hindwings (35% tailed), stout body, feathery antennae |
+| Geometridae | *Biston betularia*, *Ourapteryx sambucaria* | broad thin wings, large exposed hindwings, slender body |
+| Noctuidae | *Noctua pronuba*, *Catocala nupta* | elongated triangular forewings over rounded hindwings, robust body |
+
+**Wings are built from landmarks**, not as radial shapes:
+
+- The forewing has a base, an apex at `costaAngle` forward of the
+  perpendicular to the body, and a tornus at the end of the inner margin.
+- Each margin (costa, termen, dorsum) is a gently bowed cubic curve.
+- Each corner is rounded by its own radius (`EdgeLoop` in
+  `src/polyline.js`).
+
+**The specimen is set the way pinned moths are spread:**
+
+- The forewing's inner margin runs close to perpendicular to the body.
+- The hindwing's front corner is anchored to the forewing: a point `reach`
+  of the way along the forewing's inner margin, moved `tuck` forward. So
+  the visible hindwing always emerges from under the forewing near its
+  tornus.
+- The hindwing base sits level with the forewing base, so the forewing
+  covers the hindwing's leading edge all the way to the body.
+
+Stage 4 adds blending between plans. Stage 2 picks one family per seed.
 
 ## 4. Seeds and randomness
 
@@ -293,8 +342,11 @@ src/
   noise.js          seeded value noise
   geom.js           small vector and curve helpers
   builder.js        scratch buffers, layers, mirroring, packing to Drawing
-  clip.js           occluder tests, clipping, hatch and stipple fill (stage 3)
+  polyline.js       growable point lists; outlines from bowed edges and rounded corners
+  shapes.js         occluders: StarShape (forewing), ProfileShape (body parts)
+  clip.js           hidden-line removal; hatch and stipple fill (stage 3)
   body.js  wings.js  antennae.js  pattern.js
+  moth.js           assembles one moth: builds parts, draws them in depth order
   plans.js          body plans and blending
   name.js           pseudo-Latin names
   generate.js       generate(seed, options)
