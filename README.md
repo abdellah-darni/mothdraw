@@ -15,11 +15,10 @@ stalls.
 
 ## Install
 
-Straight from the GitHub repository (replace `OWNER` with the account the
-repository lives under):
+Straight from the GitHub repository:
 
 ```sh
-npm install github:OWNER/mothdraw
+npm install github:abdellah-darni/mothdraw
 ```
 
 No build step: the package ships its ES module source, and your bundler
