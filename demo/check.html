@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mothdraw: browser check</title>
+    <style>
+      :root { --ink: #1d1b18; --paper: #f6f3ec; --muted: #6e6a62; --ok: #2f6b2f; --bad: #a3271f; color-scheme: light dark; }
+      @media (prefers-color-scheme: dark) { :root { --ink: #e9e5dc; --paper: #161513; --muted: #9a958b; --ok: #7fc27f; --bad: #f08a80; } }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 16px; background: var(--paper); color: var(--ink); font: 15px/1.45 ui-serif, Georgia, serif; }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      p { margin: 0 0 12px; color: var(--muted); }
+      #plate { width: 100%; max-width: 900px; aspect-ratio: 4 / 3; border: 1px solid var(--muted); }
+      ul { list-style: none; padding: 0; margin: 12px 0; font: 14px ui-monospace, monospace; }
+      li { padding: 2px 0; }
+      .ok { color: var(--ok); } .bad { color: var(--bad); } .wait { color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <h1>mothdraw browser check</h1>
+    <p>Leave this page open for about 20 seconds. Then switch to another tab or app for 5 seconds and come back. Every line should turn green.</p>
+    <div id="plate"></div>
+    <ul id="results"></ul>
+    <script>
+      // Count animation frame requests, with their times, before mount runs.
+      window.__raf = [];
+      const raf0 = window.requestAnimationFrame.bind(window);
+      window.requestAnimationFrame = (cb) => { window.__raf.push(performance.now()); return raf0(cb); };
+    </script>
+    <script type="module">
+      import { mount } from '../src/index.js';
+
+      const list = document.getElementById('results');
+      const rows = {};
+      /** @param {string} key @param {string} text @param {'ok'|'bad'|'wait'} state */
+      function report(key, text, state) {
+        if (!rows[key]) { rows[key] = document.createElement('li'); list.append(rows[key]); }
+        rows[key].className = state;
+        rows[key].textContent = (state === 'ok' ? '✓ ' : state === 'bad' ? '✗ ' : '… ') + text;
+      }
+
+      // Features mount relies on (requestIdleCallback is optional).
+      let moduleWorkers = false;
+      try {
+        const probe = new Worker(URL.createObjectURL(new Blob([''], { type: 'text/javascript' })), {
+          get type() { moduleWorkers = true; return 'module'; },
+        });
+        probe.terminate();
+      } catch {}
+      report('workers', `module workers: ${moduleWorkers ? 'yes' : 'no (moths are made on the main thread instead)'}`, moduleWorkers ? 'ok' : 'bad');
+      const features = { ResizeObserver: 'ResizeObserver' in window, 'matchMedia listeners': !!matchMedia('(min-width: 1px)').addEventListener, 'canvas 2D': !!document.createElement('canvas').getContext('2d') };
+      for (const [k, v] of Object.entries(features)) report(k, `${k}: ${v ? 'yes' : 'no'}`, v ? 'ok' : 'bad');
+      report('ric', `requestIdleCallback: ${'requestIdleCallback' in window ? 'yes' : 'no (fine: a timeout is used)'}`, 'ok');
+      report('dpr', `device pixel ratio ${devicePixelRatio}, canvas uses ${Math.min(2, devicePixelRatio)}x`, 'ok');
+
+      const DRAW = 4;
+      const HOLD = 3;
+      const moths = [];
+      let repeats = 0;
+      report('first', 'first moth: waiting', 'wait');
+      report('hold', 'animation frames while holding: waiting for a full cycle', 'wait');
+      report('family', 'main family never repeats: waiting', 'wait');
+      report('hidden', 'animation frames while hidden: switch away for 5 s and come back', 'wait');
+
+      mount(document.getElementById('plate'), {
+        drawSeconds: DRAW,
+        holdSeconds: HOLD,
+        fadeSeconds: 0.5,
+        onMoth: (m) => {
+          const t = performance.now();
+          if (moths.length && moths[moths.length - 1].family === m.family) repeats++;
+          moths.push({ t, ...m });
+          if (moths.length === 1) report('first', `first moth after ${Math.round(t)} ms: ${m.name}`, t < 1000 ? 'ok' : 'bad');
+          if (moths.length >= 2) {
+            const a = moths[moths.length - 2];
+            const frames = window.__raf.filter((x) => x > a.t + DRAW * 1000 + 100 && x < t - 10).length;
+            report('hold', `animation frames while holding: ${frames}`, frames === 0 ? 'ok' : 'bad');
+            report('family', `main family never repeats: ${repeats === 0 ? 'yes' : repeats + ' repeats'} (${moths.length} moths)`, repeats === 0 ? 'ok' : 'bad');
+          }
+        },
+      });
+
+      let hiddenAt = 0;
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          hiddenAt = performance.now();
+          return;
+        }
+        if (!hiddenAt) return;
+        const away = (performance.now() - hiddenAt) / 1000;
+        // Frames requested while hidden, not counting the one that resumes drawing.
+        const during = window.__raf.filter((x) => x > hiddenAt && x < performance.now() - 5).length;
+        report('hidden', `animation frames while hidden for ${away.toFixed(1)} s: ${during}`, during === 0 ? 'ok' : 'bad');
+      });
+    </script>
+  </body>
+</html>

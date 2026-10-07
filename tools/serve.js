@@ -1,5 +1,7 @@
 // npm run serve: tiny static server for the demo (ES modules do not load
-// from file:// URLs). Serves the repository root on 127.0.0.1 only.
+// from file:// URLs). Serves the repository root on 127.0.0.1 only, unless
+// HOST is set (HOST=0.0.0.0 npm run serve, to test on a phone on the same
+// network).
 
 import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -8,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PORT = Number(process.env.PORT) || 8080;
+const HOST = process.env.HOST || '127.0.0.1';
 /** @type {Record<string, string>} */
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -37,6 +40,6 @@ createServer((req, res) => {
     'cache-control': 'no-store',
   });
   createReadStream(path).pipe(res);
-}).listen(PORT, '127.0.0.1', () => {
-  console.log(`http://127.0.0.1:${PORT}/demo/   (root ${ROOT.replace(/\/$/, '') + sep})`);
+}).listen(PORT, HOST, () => {
+  console.log(`http://${HOST}:${PORT}/demo/   (root ${ROOT.replace(/\/$/, '') + sep})`);
 });

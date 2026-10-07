@@ -8,6 +8,7 @@ import { drawAntenna } from './antennae.js';
 import { buildAbdomen, buildBody, drawBodyDetail } from './body.js';
 import { LAYER } from './builder.js';
 import { drawVisible } from './clip.js';
+import { vlen } from './geom.js';
 import { noise2 } from './noise.js';
 import { drawWingPattern } from './pattern.js';
 import { Polyline } from './polyline.js';
@@ -138,7 +139,7 @@ export function drawFrame(b, width, height, inset) {
     const ay = corners[2 * side + 1];
     const bx = corners[2 * side + 2];
     const by = corners[2 * side + 3];
-    const len = Math.hypot(bx - ax, by - ay);
+    const len = vlen(bx - ax, by - ay);
     const n = Math.ceil(len / 30);
     // Unit normal to this side.
     const nx = -(by - ay) / len;

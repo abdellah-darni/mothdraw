@@ -5,6 +5,8 @@
 // the answer flips, the crossing is found exactly (DESIGN.md §3.1) and the
 // visible runs are written to the builder.
 
+import { vlen } from './geom.js';
+
 /** @typedef {import('./builder.js').Builder} Builder */
 /** @typedef {import('./shapes.js').BandShape | import('./shapes.js').ProfileShape} Occluder */
 
@@ -85,7 +87,7 @@ export function drawVisible(b, layer, mirror, xy, n, closed, inside, occ) {
     const ay = xy[2 * i + 1];
     const bx = xy[2 * j];
     const by = xy[2 * j + 1];
-    const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / MAX_STEP));
+    const steps = Math.max(1, Math.ceil(vlen(bx - ax, by - ay) / MAX_STEP));
     let tPrev = 0;
     for (let s = 1; s <= steps; s++) {
       const t = s / steps;

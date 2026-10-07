@@ -12,6 +12,16 @@ export const TAU = Math.PI * 2;
 export const LINE_WIDTH = (1.5 * 1000) / 900;
 
 /**
+ * Length of the vector (dx, dy). Math.hypot does the same but is several
+ * times slower in V8, and this runs once or more per point.
+ * @param {number} dx
+ * @param {number} dy
+ */
+export function vlen(dx, dy) {
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
  * @param {number} a
  * @param {number} b
  * @param {number} t
@@ -49,7 +59,7 @@ export function smoothstep(e0, e1, v) {
 export function lineLength(points, offsets, line) {
   let len = 0;
   for (let v = offsets[line] + 1; v < offsets[line + 1]; v++) {
-    len += Math.hypot(points[2 * v] - points[2 * v - 2], points[2 * v + 1] - points[2 * v - 1]);
+    len += vlen(points[2 * v] - points[2 * v - 2], points[2 * v + 1] - points[2 * v - 1]);
   }
   return len;
 }

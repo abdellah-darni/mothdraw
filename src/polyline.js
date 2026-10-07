@@ -5,6 +5,7 @@
 // reused across generations and only allocates when a moth needs more room
 // than any before it.
 
+import { vlen } from './geom.js';
 import { noise2 } from './noise.js';
 
 export class Polyline {
@@ -162,7 +163,7 @@ export class EdgeLoop {
         const t = ta + ((tb - ta) * k) / 12;
         const x = bez(e[o], e[o + 2], e[o + 4], e[o + 6], t);
         const y = bez(e[o + 1], e[o + 3], e[o + 5], e[o + 7], t);
-        l += Math.hypot(x - px, y - py);
+        l += vlen(x - px, y - py);
         px = x;
         py = y;
       }
@@ -202,7 +203,7 @@ export class EdgeLoop {
       const sy = out.xy[2 * out.n - 1];
       const ex = bez(e[q], e[q + 2], e[q + 4], e[q + 6], t0[j]);
       const ey = bez(e[q + 1], e[q + 3], e[q + 5], e[q + 7], t0[j]);
-      const cornerLen = Math.hypot(cx - sx, cy - sy) + Math.hypot(ex - cx, ey - cy);
+      const cornerLen = vlen(cx - sx, cy - sy) + vlen(ex - cx, ey - cy);
       const cs = Math.max(1, Math.ceil(cornerLen / step));
       // On the last corner, stop short: the loop's first point closes it.
       const last = j === 0 ? cs - 1 : cs;
@@ -241,7 +242,7 @@ function normalAt(xy, n, closed, i) {
   const b = i < n - 1 ? i + 1 : closed ? 0 : n - 1;
   const tx = xy[2 * b] - xy[2 * a];
   const ty = xy[2 * b + 1] - xy[2 * a + 1];
-  const l = Math.hypot(tx, ty) || 1;
+  const l = vlen(tx, ty) || 1;
   dx[i] = ty / l;
   dy[i] = -tx / l;
 }
@@ -258,11 +259,11 @@ export function scallop(pl, from, to, count, depth) {
   const xy = pl.xy;
   ensure(pl.n);
   let total = 0;
-  for (let i = from + 1; i < to; i++) total += Math.hypot(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
+  for (let i = from + 1; i < to; i++) total += vlen(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
   for (let i = from; i < to; i++) normalAt(xy, pl.n, true, i);
   let s = 0;
   for (let i = from; i < to; i++) {
-    if (i > from) s += Math.hypot(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
+    if (i > from) s += vlen(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
     const f = (s / total) * count;
     const d = depth * Math.pow(Math.sin(Math.PI * (f - Math.floor(f))), 0.6);
     // Store the move; apply after all normals are taken from the original.
@@ -288,7 +289,7 @@ export function roughen(pl, closed, amp, wavelength, row) {
   ensure(n);
   let s = 0;
   for (let i = 0; i < n; i++) {
-    if (i > 0) s += Math.hypot(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
+    if (i > 0) s += vlen(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
     normalAt(xy, n, closed, i);
     const d = amp * (2 * noise2(s / wavelength, row) - 1);
     dx[i] *= d;
@@ -384,7 +385,7 @@ export function outlineAround(line, out, widthAt) {
       const j1 = i < n - 1 ? i + 1 : i;
       const tx = xy[2 * j1] - xy[2 * j0];
       const ty = xy[2 * j1 + 1] - xy[2 * j0 + 1];
-      const tl = Math.hypot(tx, ty) || 1;
+      const tl = vlen(tx, ty) || 1;
       out.push(xy[2 * i] - (ty / tl) * w * side, xy[2 * i + 1] + (tx / tl) * w * side);
     }
   }

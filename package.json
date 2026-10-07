@@ -1,7 +1,16 @@
 {
   "name": "mothdraw",
   "version": "0.1.0",
-  "description": "Procedural moth line drawings: a seed goes in, a pinned-specimen drawing comes out.",
+  "description": "Procedural moth drawings in the style of a naturalist's plate: a seed goes in, a line drawing of a moth comes out. Includes a continuous mode that draws moth after moth.",
+  "keywords": [
+    "generative",
+    "procedural",
+    "moth",
+    "drawing",
+    "plotter",
+    "canvas",
+    "svg"
+  ],
   "type": "module",
   "license": "MIT",
   "author": "Abdellah Darni",
@@ -9,16 +18,17 @@
     ".": "./src/index.js",
     "./mount": "./src/mount.js"
   },
-  "sideEffects": false,
   "files": [
     "src",
-    "dist"
+    "README.md",
+    "LICENSE"
   ],
+  "sideEffects": false,
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "build": "esbuild mothdraw=src/index.js worker=src/worker.js --bundle --minify --format=esm --outdir=dist",
+    "build": "esbuild mothdraw=src/index.js worker=src/worker.js --bundle --minify --format=esm --splitting --chunk-names=chunks/[name]-[hash] --target=es2020,chrome100,firefox114,safari15 --outdir=dist",
     "bench": "node --expose-gc bench/bench.js",
     "perf": "node tools/perf-generate.js && node tools/perf-mount.js",
     "test": "node --test test/*.test.js",

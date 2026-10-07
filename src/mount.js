@@ -4,7 +4,9 @@
 //
 // Moths are generated in a Web Worker (worker.js): a first call takes about
 // 17 ms at full speed and about 70 ms on a slow CPU, too long for the main
-// thread. The main thread only draws.
+// thread. The main thread only draws. If the worker cannot be created,
+// fails, or does not answer in time, moths are made on the main thread in
+// idle time instead, so the plate is never left empty.
 //
 // Timeline of one moth:
 //   draw  (requestAnimationFrame, fixed duration whatever the point count)
@@ -16,12 +18,12 @@
 // numbers, and each frame strokes only the stretch of line drawn since the
 // last one.
 
-import { LINE_WIDTH } from './geom.js';
+import { LINE_WIDTH, vlen } from './geom.js';
 import { drawDrawing, fitDrawing } from './render-canvas.js';
 
 /** @typedef {import('./builder.js').Drawing} Drawing */
-/** @typedef {import('./worker.js').MothReply} MothReply */
-/** @typedef {import('./worker.js').MothRequest} MothRequest */
+/** @typedef {import('./make.js').MothReply} MothReply */
+/** @typedef {import('./make.js').MothRequest} MothRequest */
 
 /**
  * @typedef {object} MountOptions
@@ -45,6 +47,13 @@ import { drawDrawing, fitDrawing } from './render-canvas.js';
 
 /** Device pixels per CSS pixel, capped: sharp on high-density screens, cheap on 3x phones. */
 const MAX_DPR = 2;
+/**
+ * How long to wait for the worker before making the moth on the main
+ * thread instead. Generation takes a few milliseconds; the first request
+ * also covers loading the worker script.
+ */
+const FIRST_REPLY_MS = 1500;
+const REPLY_MS = 4000;
 
 // Phases.
 const WAITING = 0; // no moth to show yet
@@ -119,18 +128,72 @@ export function mount(element, options = {}) {
   let holdTimer = 0;
   let raf = 0;
 
-  // --- Worker -------------------------------------------------------------
-  const worker = options.workerUrl
-    ? new Worker(options.workerUrl, { type: 'module' })
-    : new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
-  /** @param {MessageEvent<MothReply>} e */
-  worker.onmessage = (e) => {
+  // --- Worker, and the main-thread fallback -------------------------------
+  /** @type {Worker | null} */
+  let worker = null;
+  let fallback = false;
+  let watchdog = 0;
+  let asked = 0; // requests sent so far
+  /** @type {MothRequest | null} */
+  let inFlight = null;
+
+  try {
+    worker = options.workerUrl
+      ? new Worker(options.workerUrl, { type: 'module' })
+      : new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+    /** @param {MessageEvent<MothReply>} e */
+    worker.onmessage = (e) => receive(e.data);
+    worker.onerror = (e) => {
+      e.preventDefault();
+      useFallback();
+    };
+    worker.onmessageerror = useFallback;
+  } catch {
+    // Workers blocked (for example by a Content Security Policy) or not
+    // supported as modules.
+    fallback = true;
+  }
+
+  /** @param {MothReply} reply */
+  function receive(reply) {
     if (destroyed) return;
+    if (watchdog) win.clearTimeout(watchdog);
+    watchdog = 0;
+    inFlight = null;
     requested = false;
-    nextIndex = e.data.index;
-    pending = e.data;
+    nextIndex = reply.index;
+    pending = reply;
     if (phase === WAITING) show();
-  };
+  }
+
+  /** Stops using the worker; any unanswered request is redone here. */
+  function useFallback() {
+    if (fallback || destroyed) return;
+    fallback = true;
+    if (watchdog) win.clearTimeout(watchdog);
+    watchdog = 0;
+    worker?.terminate();
+    worker = null;
+    if (inFlight) makeHere(inFlight);
+  }
+
+  // Safari has no requestIdleCallback; a zero timeout still yields to
+  // drawing and input first.
+  /** @param {() => void} cb */
+  const idle = (cb) => (win.requestIdleCallback ? win.requestIdleCallback(cb, { timeout: 500 }) : win.setTimeout(cb, 1));
+
+  /**
+   * Makes a moth on the main thread, in idle time. The generator is loaded
+   * only now, so pages that never need it never download it.
+   * @param {MothRequest} req
+   */
+  function makeHere(req) {
+    import('./make.js').then(({ makeMoth }) => {
+      idle(() => {
+        if (!destroyed) receive(makeMoth(req));
+      });
+    });
+  }
 
   /** Asks for the next moth, avoiding the current one's family. */
   function request() {
@@ -146,6 +209,15 @@ export function mount(element, options = {}) {
       transfer.push(spare.points.buffer, spare.offsets.buffer);
     }
     spare = null;
+    if (fallback || !worker) {
+      makeHere(req);
+      return;
+    }
+    // Keep the request (without its transferred arrays) in case the worker
+    // never answers and it has to be made here instead.
+    inFlight = { base: req.base, index: req.index, avoid: req.avoid, density: req.density };
+    watchdog = win.setTimeout(useFallback, asked === 0 ? FIRST_REPLY_MS : REPLY_MS);
+    asked++;
     worker.postMessage(req, transfer);
   }
 
@@ -223,7 +295,7 @@ export function mount(element, options = {}) {
       const y0 = p[2 * vtx + 1];
       const x1 = p[2 * vtx + 2];
       const y1 = p[2 * vtx + 3];
-      const len = Math.hypot(x1 - x0, y1 - y0);
+      const len = vlen(x1 - x0, y1 - y0);
       const remain = len - pen[SEG];
       if (pen[DRAWN] + remain <= target) {
         // Finish this segment.
@@ -419,7 +491,9 @@ export function mount(element, options = {}) {
     if (destroyed) return;
     destroyed = true;
     cancelTimers();
-    worker.terminate();
+    if (watchdog) win.clearTimeout(watchdog);
+    worker?.terminate();
+    worker = null;
     resizer.disconnect();
     themeWatcher.disconnect();
     scheme.removeEventListener('change', onThemeMaybeChanged);

@@ -9,6 +9,8 @@ import { generate } from '../src/index.js';
 const N = 1000;
 const WARMUP = 50;
 const HEAP_EVERY = 100;
+/** Browsers the bundle must run in: module workers need Firefox 114 and Safari 15. */
+const TARGET = ['es2020', 'chrome100', 'firefox114', 'safari15'];
 
 const gc = /** @type {(() => void) | undefined} */ (globalThis.gc);
 
@@ -49,14 +51,22 @@ const p95 = quantile(times, 0.95);
 
 /**
  * Minified bundle of one entry, and its size after Brotli (quality 11).
+ * With code splitting, as Vite and Rollup do, so a dynamic import (mount's
+ * main-thread fallback) becomes a separate chunk loaded only when needed;
+ * only the entry chunk is counted. Without splitting, everything counts.
  * @param {string} entry
+ * @param {boolean} [split]
  */
-async function size(entry) {
-  const r = await build({ entryPoints: [entry], bundle: true, minify: true, format: 'esm', write: false, logLevel: 'silent' });
-  const code = r.outputFiles[0].contents;
+async function size(entry, split = true) {
+  const r = await build({
+    entryPoints: [entry], bundle: true, minify: true, format: 'esm', splitting: split,
+    outdir: 'out/bench-build', write: false, logLevel: 'silent', target: TARGET,
+  });
+  const main = r.outputFiles.find((f) => f.path.endsWith(entry.split('/').pop()));
+  const code = /** @type {Uint8Array} */ (main?.contents);
   return { min: code.length, br: brotliCompressSync(code, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }).length };
 }
-const lib = await size('src/index.js');
+const lib = await size('src/index.js', false);
 const worker = await size('src/worker.js');
 // What the 404 page loads: mount (main thread) plus the worker.
 const page = await size('src/mount.js');

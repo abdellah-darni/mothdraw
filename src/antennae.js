@@ -8,7 +8,7 @@
 
 import { LAYER } from './builder.js';
 import { drawVisible } from './clip.js';
-import { smoothstep } from './geom.js';
+import { smoothstep, vlen } from './geom.js';
 import { outlineAround } from './polyline.js';
 
 /** @typedef {import('./builder.js').Builder} Builder */
@@ -77,7 +77,7 @@ export function drawAntenna(b, p, L, x0, y0, maxAngle, spine, outline, occ) {
         const t = i / (n - 1);
         const tx = xy[2 * i + 2] - xy[2 * i - 2];
         const ty = xy[2 * i + 3] - xy[2 * i - 1];
-        const tl = Math.hypot(tx, ty);
+        const tl = vlen(tx, ty);
         const l = 0.007 * L * (1 - 0.6 * t);
         // Outer side is to the right of travel for the right antenna.
         const c = Math.cos(50 * DEG);
@@ -115,7 +115,7 @@ export function drawAntenna(b, p, L, x0, y0, maxAngle, spine, outline, occ) {
     if (reach < 0.8) continue;
     const tx = xy[2 * i + 2] - xy[2 * i - 2];
     const ty = xy[2 * i + 3] - xy[2 * i - 1];
-    const tl = Math.hypot(tx, ty);
+    const tl = vlen(tx, ty);
     const ux = tx / tl;
     const uy = ty / tl;
     for (let side = -1; side <= 1; side += 2) {

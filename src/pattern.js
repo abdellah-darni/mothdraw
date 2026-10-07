@@ -20,7 +20,7 @@
 
 import { LAYER } from './builder.js';
 import { drawStroke, drawVisible } from './clip.js';
-import { smoothstep } from './geom.js';
+import { smoothstep, vlen } from './geom.js';
 import { fbm2, noise2 } from './noise.js';
 import { outlineAround, Polyline } from './polyline.js';
 import { sampleRanges } from './rng.js';
@@ -349,7 +349,7 @@ function uvLine(c, layer, u0, v0, u1, v1, gap, bend, row) {
   const x0 = xy[0];
   const y0 = xy[1];
   w.toXY(u1, v1, xy);
-  const n = Math.max(2, Math.ceil(Math.hypot(xy[0] - x0, xy[1] - y0) / 5));
+  const n = Math.max(2, Math.ceil(vlen(xy[0] - x0, xy[1] - y0) / 5));
   line.reset();
   for (let i = 0; i <= n; i++) {
     const t = i / n;
@@ -464,7 +464,7 @@ function eyeTone(eyes, x, y) {
     const dy = y - e.y;
     const ca = Math.cos(e.a);
     const sa = Math.sin(e.a);
-    const d = Math.hypot((dx * ca + dy * sa) / e.rx, (-dx * sa + dy * ca) / e.ry);
+    const d = vlen((dx * ca + dy * sa) / e.rx, (-dx * sa + dy * ca) / e.ry);
     if (d >= 1) continue;
     if (d < e.window) return e.window > 0.08 ? -9 : 1.2;
     const k = Math.floor(((1 - d) / (1 - e.window)) * e.rings);
@@ -513,7 +513,7 @@ function noctuid(c, fore, p) {
       t += p.terminal * smoothstep(0.84, 0.97, u);
       t -= p.pale * bump((u - 0.77) / 0.035);
       t += 0.25 * bump(u / 0.12);
-      if (Math.hypot(x - ren.x, y - ren.y) < renR) t += 0.45;
+      if (vlen(x - ren.x, y - ren.y) < renR) t += 0.45;
       return t;
     });
     crossLine(c, p.ante, p.wave * 0.6, p.waves * 0.6, p.sharp, 0, 0, 1);
@@ -584,7 +584,7 @@ function markTone(x, y) {
     const ey = sg[o + 3] - sg[o + 1];
     const l2 = ex * ex + ey * ey || 1;
     const t = Math.max(0, Math.min(1, ((x - sg[o]) * ex + (y - sg[o + 1]) * ey) / l2));
-    if (Math.hypot(x - sg[o] - t * ex, y - sg[o + 1] - t * ey) < sg[o + 4]) return sg[o + 5];
+    if (vlen(x - sg[o] - t * ex, y - sg[o + 1] - t * ey) < sg[o + 4]) return sg[o + 5];
   }
   return NaN;
 }
@@ -657,7 +657,7 @@ function geometrid(c, fore, p) {
     let t = p.pepper * (0.5 + 1.2 * mottle(x, y)) * (1 - 0.6 * p.band) + 0.08 + p.melanic * 0.7;
     t += p.margin * smoothstep(0.88, 1, u) + (0.15 + p.basal) * bump(u / (inner * 0.75));
     t += p.outerShade * smoothstep(outer + 0.01, outer + 0.05, u - bow * Math.sin(Math.PI * Math.max(0, Math.min(1, v)))) * (1 - smoothstep(outer + 0.12, outer + 0.2, u));
-    if (Math.hypot(x - dot.x, y - dot.y) < dotR) t += 1;
+    if (vlen(x - dot.x, y - dot.y) < dotR) t += 1;
     return t;
   });
   if (p.band > 0.15) {

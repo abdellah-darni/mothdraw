@@ -11,6 +11,7 @@
 // fringe hairs along the termen. Only the right wings are built; the
 // builder mirrors them.
 
+import { vlen } from './geom.js';
 import { EdgeLoop, Polyline, roughen, scallop, simplifyClosed } from './polyline.js';
 import { BandShape } from './shapes.js';
 
@@ -83,7 +84,7 @@ export class Wing {
     const n = tmp.n;
     const t = tmp.xy;
     cum[0] = 0;
-    for (let i = 1; i < n; i++) cum[i] = cum[i - 1] + Math.hypot(t[2 * i] - t[2 * i - 2], t[2 * i + 1] - t[2 * i - 1]);
+    for (let i = 1; i < n; i++) cum[i] = cum[i - 1] + vlen(t[2 * i] - t[2 * i - 2], t[2 * i + 1] - t[2 * i - 1]);
     let j = 0;
     for (let k = 0; k <= K; k++) {
       const target = (cum[n - 1] * k) / K;
@@ -94,7 +95,7 @@ export class Wing {
       this.ma[k] = Math.atan2(this.my[k] - this.by, this.mx[k] - this.bx);
     }
     this.termenLength = cum[n - 1];
-    this.radius = Math.hypot(this.mx[K >> 1] - this.bx, this.my[K >> 1] - this.by);
+    this.radius = vlen(this.mx[K >> 1] - this.bx, this.my[K >> 1] - this.by);
   }
 
   /**
@@ -148,8 +149,8 @@ export class Wing {
     }
     const v = (i + (a - ma[i]) / (ma[i + 1] - ma[i] || 1)) / K;
     this.termenAt(v, out);
-    const r = Math.hypot(out[0] - this.bx, out[1] - this.by) || 1;
-    out[0] = Math.hypot(x - this.bx, y - this.by) / r;
+    const r = vlen(out[0] - this.bx, out[1] - this.by) || 1;
+    out[0] = vlen(x - this.bx, y - this.by) / r;
     out[1] = v;
   }
 
@@ -164,14 +165,14 @@ export class Wing {
     const n = this.fine.n;
     let since = FRINGE_GAP;
     for (let i = a; i < b; i++) {
-      if (i > a) since += Math.hypot(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
+      if (i > a) since += vlen(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1]);
       if (since < FRINGE_GAP) continue;
       since = 0;
       const p = (i + n - 1) % n;
       const q = (i + 1) % n;
       const tx = xy[2 * q] - xy[2 * p];
       const ty = xy[2 * q + 1] - xy[2 * p + 1];
-      const tl = Math.hypot(tx, ty) || 1;
+      const tl = vlen(tx, ty) || 1;
       // Outward normal, turned a few degrees at random.
       const j = (rng() - 0.5) * 0.35;
       const nx = (ty / tl) * Math.cos(j) - (-tx / tl) * Math.sin(j);

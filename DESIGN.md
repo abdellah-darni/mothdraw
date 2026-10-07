@@ -458,11 +458,66 @@ bytes are V8 boxing intermediate numbers before `frame()` is optimised;
 from the second moth on, the sampler finds at most one or two 16-byte
 samples per 240 frames.
 
-**Open item.** In about 6 of 70 fresh headless launches, the first moth
-took about 6 s instead of about 80 ms. It is always a single, near-constant
-delay, and every later moth on the page is on time. It was seen with the
-dev server and with Vite's production build, and never in 40 instrumented
-launches. To check in stage 6, in a normal browser.
+**Fallback (stage 6).** If the worker cannot be created (a Content
+Security Policy, or no module workers), fires `error` or `messageerror`,
+or does not answer within 1.5 s (4 s after the first moth), mount
+switches to the main thread for good:
+- It loads `make.js`, the same seed-picking and generating code the
+  worker uses, with a dynamic `import()`. Bundlers emit it as a separate
+  chunk, downloaded only then.
+- It makes each moth in an idle callback, or a 1 ms timeout in Safari,
+  which has no `requestIdleCallback`.
+- Measured (`node tools/perf-fallback.js`): moths appear and cycle for a
+  missing worker script, a silent worker, CSP-blocked workers and no
+  `Worker` at all. The cost is the cold first generation on the main
+  thread: up to 111 ms at 6× CPU throttling (26–31 ms at 1×). That is
+  acceptable for a rare fallback, and it is why the worker remains the
+  default.
+
+**The 6-second first moth (investigated in stage 6).** Some launches
+during stage 5 took about 6 s to show the first moth.
+- **Not the hold timer.** Runs with `hold=1` showed the same delay, and 60
+  launches each with `hold=2` and `hold=10` showed none.
+- **Not the harness either.** No measuring wrapper, DevTools tracing,
+  CPU throttling, browser leftovers or reused debugging port reproduced
+  it.
+- **When it happened.** All 7 slow launches fell between 21:45 and 22:06
+  on 6 October, after Chrome had updated itself at 19:51. None occurred in
+  the roughly 480 launches since, with code and scripts unchanged across
+  the boundary, and no code path in mount waits that long.
+- **Conclusion.** It points to the machine or browser state that evening,
+  not to mothdraw. The root cause is not proven, because it can no longer
+  be reproduced.
+- **Guards.**
+  - `node tools/check-first-moth.js` launches a fresh Chrome 200 times
+    and fails if any first moth takes over 1 s to start drawing. Last
+    run: median 82 ms, p95 102 ms, max 215 ms, none over 1 s.
+  - The watchdog above guarantees a moth even if the worker stalls.
+
+**Browsers.** Everything is measured in Chrome.
+- **Firefox** is not installed here.
+- **Safari 27** is installed, but its WebDriver needs "Allow remote
+  automation", a setting only the owner can turn on.
+- **Static checks:** the bundles build for `es2020, chrome100,
+  firefox114, safari15`. Every API used exists in Firefox 114 and Safari
+  15 (module workers set that floor), except `requestIdleCallback`, which
+  is optional. The worker uses the array form of the transfer list.
+- **`demo/check.html`** reports the key behaviours as pass or fail in any
+  browser, for checking by hand.
+
+**Packaging.**
+- `exports` point at `src/` (`.` and `./mount`), and `files` is `src`,
+  README and LICENSE. `dist/` is not committed, so an install from GitHub
+  ships the source, and the site's bundler compiles it.
+- Tested by installing from a git snapshot (`git+file:`, the same path as
+  `github:`) into a fresh Astro 7.3.6 project (Vite 8.3.3):
+  - `astro dev` runs with the worker and needs no configuration. Vite 8
+    resolves worker URLs inside pre-bundled dependencies; Vite 6 does not
+    and falls back to the main thread in dev.
+  - `astro build` emits the worker as its own file: a 3.2 KB page script,
+    a 14.3 KB worker, and a 14.3 KB fallback chunk loaded only on failure
+    (all after Brotli). `astro preview` shows the first moth in
+    62–89 ms.
 
 ## 4. Seeds and randomness
 
