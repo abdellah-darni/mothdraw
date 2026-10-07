@@ -40,12 +40,14 @@
       const plate = document.getElementById('plate');
       const log = document.getElementById('log');
       const toggle = document.getElementById('toggle');
-      // ?seed=abc gives a fixed sequence; ?draw=7&hold=6 change the timings.
+      // ?seed=abc gives a fixed sequence; ?draw=7&hold=6 change the timings;
+      // ?frame=0 draws without the frame.
       const params = new URLSearchParams(location.search);
       const options = {
         seed: params.get('seed') || undefined,
         drawSeconds: Number(params.get('draw')) || undefined,
         holdSeconds: Number(params.get('hold')) || undefined,
+        frame: params.get('frame') !== '0',
         onMoth: ({ name, seed, family }) => { log.textContent = `${name} · ${family} · seed ${seed}`; },
       };
       let plateApi = mount(plate, options);

@@ -12,6 +12,7 @@ import { vlen } from './geom.js';
  * @property {number} index         next index in the fixed sequence
  * @property {string | null} avoid  main family to avoid (the moth on screen)
  * @property {number} density
+ * @property {boolean} frame          draw the ruled frame
  * @property {Float32Array} [points]  previous moth's arrays, sent back for reuse
  * @property {Uint32Array} [offsets]
  */
@@ -47,7 +48,7 @@ export function makeMoth(req) {
     index++;
     if (peekFamily(seed) !== req.avoid) break;
   }
-  const moth = generate(seed, { density: req.density, reuse: { points: req.points, offsets: req.offsets } });
+  const moth = generate(seed, { density: req.density, frame: req.frame, reuse: { points: req.points, offsets: req.offsets } });
   const { points, offsets } = moth.drawing;
   // Total ink length: the pen draws it at constant speed in a fixed time.
   let total = 0;

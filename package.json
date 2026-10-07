@@ -15,11 +15,19 @@
   "license": "MIT",
   "author": "Abdellah Darni",
   "exports": {
-    ".": "./src/index.js",
-    "./mount": "./src/mount.js"
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./mount": {
+      "types": "./types/mount.d.ts",
+      "default": "./src/mount.js"
+    }
   },
+  "types": "./types/index.d.ts",
   "files": [
     "src",
+    "types",
     "README.md",
     "LICENSE"
   ],
@@ -34,7 +42,8 @@
     "test": "node --test test/*.test.js",
     "serve": "node tools/serve.js",
     "sheet": "node tools/contact-sheet.js",
-    "similar": "node tools/similar.js"
+    "similar": "node tools/similar.js",
+    "types": "npx -y -p typescript@5 tsc -p tsconfig.types.json"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"

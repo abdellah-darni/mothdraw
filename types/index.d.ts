@@ -1,0 +1,13 @@
+export { toSVG } from "./render-svg.js";
+export { LINE_WIDTH } from "./geom.js";
+export { mount } from "./mount.js";
+export type Drawing = import("./builder.js").Drawing;
+export type Label = import("./builder.js").Label;
+export type Moth = import("./generate.js").Moth;
+export type GenerateOptions = import("./generate.js").GenerateOptions;
+export type SvgOptions = import("./render-svg.js").SvgOptions;
+export type Fit = import("./render-canvas.js").Fit;
+export type MountOptions = import("./mount.js").MountOptions;
+export type Mounted = import("./mount.js").Mounted;
+export { generate, FRAME_WIDTH, FRAME_HEIGHT } from "./generate.js";
+export { fitDrawing, drawDrawing, drawLabel } from "./render-canvas.js";

@@ -82,6 +82,8 @@ export class Builder {
     this.open = false;
     /** Reused by pack() to avoid an allocation per call. */
     this.fit = { scale: 1, x: 0, y: 0 };
+    /** After pack(): the specimen's bounding box in frame units (the frame excluded). */
+    this.bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
   }
 
   /** Forgets all lines but keeps the memory. */
@@ -192,6 +194,10 @@ export class Builder {
     }
     if (n === 0) minX = minY = maxX = maxY = 0;
     const { scale, x: ox, y: oy } = fitBox(minX, minY, maxX, maxY, box.left, box.top, box.right, box.bottom, this.fit);
+    this.bounds.minX = minX * scale + ox;
+    this.bounds.minY = minY * scale + oy;
+    this.bounds.maxX = maxX * scale + ox;
+    this.bounds.maxY = maxY * scale + oy;
 
     const points = floatOutput(reuse && reuse.points, outVertices * 2);
     const offsets = uintOutput(reuse && reuse.offsets, outLines + 1);

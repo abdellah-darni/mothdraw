@@ -45,6 +45,7 @@
     holdSeconds: Number(q.get('hold') ?? 6),
     fadeSeconds: Number(q.get('fade') ?? 0.8),
     seed: q.get('seed') || undefined,
+    frame: q.get('frame') !== '0',
     // ?worker=404 or ?worker=stall point the worker at a missing or silent script.
     workerUrl: q.get('worker') === '404' ? '/does-not-exist.js' : q.get('worker') === 'stall' ? './stall-worker.js' : undefined,
     onMoth: (m) => {

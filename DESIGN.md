@@ -505,9 +505,31 @@ during stage 5 took about 6 s to show the first moth.
 - **`demo/check.html`** reports the key behaviours as pass or fail in any
   browser, for checking by hand.
 
+**Without the frame.** `generate(seed, { frame: false })` and
+`mount(el, { frame: false })` leave out the frame lines, for a moth placed
+directly on a page's background:
+- The specimen is fitted to a box covering almost the whole plate (24
+  units of margin, 70 units kept free at the bottom).
+- Size by real wingspan narrows to 85–100% of that box, from 70–100% with
+  the frame, so no moth looks lost.
+- After packing, the name's baseline is set 16 units plus most of a line
+  below the specimen's lowest point. Specimen and name then move together
+  so the pair is centred vertically. The renderers and mount's caption
+  read the position from `drawing.label`, so they needed no change.
+- The same seed gives the same moth and name either way. The frameless
+  version is drawn larger, so at the same ink density on the page it has
+  more points (median 13,222).
+
+**Types.** `types/*.d.ts` are generated from the JSDoc by `npm run types`
+(TypeScript via `npx`, not a dependency) and ship with the package.
+`exports` points each entry at its types. They were checked from a
+consumer project under `strict`, with the definitions themselves
+type-checked: correct usage compiles, and wrong option names and types
+are reported.
+
 **Packaging.**
-- `exports` point at `src/` (`.` and `./mount`), and `files` is `src`,
-  README and LICENSE. `dist/` is not committed, so an install from GitHub
+- `exports` point at `src/` (`.` and `./mount`) with their types, and
+  `files` is `src`, `types`, README and LICENSE. `dist/` is not committed, so an install from GitHub
   ships the source, and the site's bundler compiles it.
 - Tested by installing from a git snapshot (`git+file:`, the same path as
   `github:`) into a fresh Astro 7.3.6 project (Vite 8.3.3):

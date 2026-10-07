@@ -2,7 +2,8 @@
 
 Procedural moth drawings in the style of a naturalist's plate. A seed goes
 in; a pen-and-ink line drawing of a pinned moth specimen comes out, with a
-frame and a pseudo-Latin name. Every seed gives a different moth.
+pseudo-Latin name and, unless you turn it off, a ruled frame. Every seed
+gives a different moth.
 
 The moths are built from the body plans of four real families: hawk moths,
 silk moths, inchworms and owlet moths. Each moth blends towards a second
@@ -46,6 +47,7 @@ The plate fills the element you give it, so give the element a size.
 | `fadeSeconds` | `0.8` | fade-in of the name, at the start of the hold |
 | `seed` | random | a fixed sequence instead: `seed`, `seed-1`, `seed-2`, … |
 | `density` | `1` | amount of texture; `0.5` is about half |
+| `frame` | `true` | the ruled frame; `false` puts the moth directly on the page's background (see below) |
 | `lineWidth` | 1.5 px on a 900 px plate | stroke width in drawing units (the plate is 1000 units wide); it scales with the plate |
 | `onMoth` | | called as each moth starts, with `{ name, seed, family }` |
 | `workerUrl` | | the worker script's URL, if your bundler cannot resolve it |
@@ -68,6 +70,21 @@ Behaviour:
   Security Policy without `worker-src 'self'`), fails to load, or does not
   answer within 1.5 s, moths are made on the main thread in idle time
   instead. The page is never left empty.
+
+### Without the frame
+
+`frame: false` (in `mount()` or `generate()`) leaves out the frame lines,
+for a moth that sits directly on the page's background:
+
+- The specimen fills 85% to 100% of the plate, depending on its real
+  size. With the frame the range is 70% to 100%. Moths still vary in size
+  by family, but none looks lost.
+- The name sits just below the specimen instead of at the bottom of the
+  plate, and the two are centred together.
+
+```js
+mount(document.getElementById('plate'), { frame: false });
+```
 
 ### Astro (and Vite)
 
@@ -106,6 +123,7 @@ export default { optimizeDeps: { exclude: ['mothdraw'] } };
 import { generate, toSVG, fitDrawing, drawDrawing, drawLabel } from 'mothdraw';
 
 const { drawing, name, family } = generate('luna'); // same seed, same moth
+const bare = generate('luna', { frame: false });     // the same moth, no frame
 
 // A standalone SVG file; the name is drawn as italic text under the specimen.
 const svg = toSVG(drawing, { title: name, label: name });
@@ -118,11 +136,20 @@ drawDrawing(ctx, drawing, fit);
 drawLabel(ctx, drawing, fit, name, style.fontFamily);
 ```
 
-`generate(seed, { density })` is a pure function with no DOM access, so
+`generate(seed, { density, frame })` is a pure function with no DOM access, so
 it runs in Node, in a worker or on the main thread. It takes about 2 ms.
 A drawing is two flat typed arrays (`points` and `offsets`) that can be
 transferred between threads without copying. [DESIGN.md](DESIGN.md)
 explains how it all works.
+
+## TypeScript
+
+Type definitions are included, generated from the source's JSDoc, so
+sites need no `@types` package:
+
+```ts
+import { mount, type MountOptions, type Moth } from 'mothdraw';
+```
 
 ## Browser support
 
@@ -143,6 +170,7 @@ Safari 15+. Older browsers fall back to the main thread (see above).
 | `npm run sheet` | renders a contact sheet of seeds to `out/contact-sheet.png` |
 | `npm run similar` | ranks plates by how alike they look (`-- --crop` ignores size) |
 | `npm run build` | minified ES module bundles in `dist/` |
+| `npm run types` | regenerates the type definitions in `types/` from the JSDoc (fetches TypeScript with `npx`; it is not a dependency) |
 
 Node 22 or later. esbuild is the only dev dependency. The measurement
 tools drive the Chrome installed on the machine (set `CHROME` to use

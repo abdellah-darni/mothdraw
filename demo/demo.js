@@ -30,7 +30,8 @@ function show(seed) {
   seedInput.value = seed;
 
   const t0 = performance.now();
-  moth = generate(seed);
+  // ?frame=0 draws without the frame.
+  moth = generate(seed, { frame: new URLSearchParams(location.search).get('frame') !== '0' });
   const ms = performance.now() - t0;
 
   const { drawing } = moth;

@@ -32,6 +32,8 @@ import { drawDrawing, fitDrawing } from './render-canvas.js';
  * @property {number} [fadeSeconds]  name fade-in, part of the hold (default 0.8)
  * @property {string} [seed]         fixed sequence: seed, seed-1, seed-2... (default: random)
  * @property {number} [density]      texture density (default 1)
+ * @property {boolean} [frame]       draw the ruled frame (default true); without it
+ *   the moth sits directly on the page's background, name just below it
  * @property {number} [lineWidth]    in drawing units (default LINE_WIDTH)
  * @property {(moth: { name: string, seed: string, family: string }) => void} [onMoth]
  *   called when each moth starts
@@ -70,6 +72,7 @@ export function mount(element, options = {}) {
   const holdMs = (options.holdSeconds ?? 6) * 1000;
   const fadeMs = (options.fadeSeconds ?? 0.8) * 1000;
   const density = options.density ?? 1;
+  const framed = options.frame ?? true;
   const lineWidth = options.lineWidth ?? LINE_WIDTH;
   const base = options.seed ?? null;
   const onMoth = options.onMoth;
@@ -200,7 +203,7 @@ export function mount(element, options = {}) {
     if (requested || destroyed) return;
     requested = true;
     /** @type {MothRequest} */
-    const req = { base, index: nextIndex, avoid: current ? current.family : null, density };
+    const req = { base, index: nextIndex, avoid: current ? current.family : null, density, frame: framed };
     /** @type {Transferable[]} */
     const transfer = [];
     if (spare && spare.points.buffer.byteLength > 0) {
@@ -215,7 +218,7 @@ export function mount(element, options = {}) {
     }
     // Keep the request (without its transferred arrays) in case the worker
     // never answers and it has to be made here instead.
-    inFlight = { base: req.base, index: req.index, avoid: req.avoid, density: req.density };
+    inFlight = { base: req.base, index: req.index, avoid: req.avoid, density: req.density, frame: req.frame };
     watchdog = win.setTimeout(useFallback, asked === 0 ? FIRST_REPLY_MS : REPLY_MS);
     asked++;
     worker.postMessage(req, transfer);
